@@ -133,7 +133,10 @@ adata.var.to_excel(os.path.join(BaseDirectory, str(sampleName) + 'HighlyVariable
 
 ###SCALE EACH GENE TO UNIT OF VARIANCE, CLIP VALUES EXCEEDING MAX VARIANCE:
 sc.pp.scale(adata, max_value=10)
+###EXAMPLE HOW TO PLOT EXPRESSION DISTRIBUTION INDIVIDUAL GENES:
 sc.pl.violin(adata, 'Oprm1', save='_' + str(sampleName) + '_Oprm1')
+   #You can also pass a list of genes here by just converting second argument to a list:
+sc.pl.violin(adata, ['Oprm1', 'Penk'], save='_' + str(sampleName) + '_Oprm1_Penk')
 
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
 labeled_genes = ['Oprm1', 'Slc17a7', 'Slc17a6', 'Gad1', 'Slc1a2', 'Olig2', 'Tmem119', 'Dbi', 'Opcml', 'Fos']
@@ -219,19 +222,18 @@ list2 = s[half-1:]
 lz = list(zip(list1, list2))
 
 ###CALCULATE GENES UPREGULATED IN GROUP 2:
+method = 'wilcoxon' #t-test, wilcoxon, or logreg
+
 cat = pd.DataFrame()
 for i in lz:
-    sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=500, method='wilcoxon')
+    sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=500, method=method)
     result = adata.uns['rank_genes_groups']
     groups = result['names'].dtype.names
-    pd.DataFrame(
-            {group + '_' + key[:1]: result[key][group]
-            for group in groups for key in ['names', 'pvals']}).head(500)
     pval_table = pd.DataFrame(
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals']}).head(500)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2) + '.xlsx'))
+    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2) + '_' + method + '.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1: 
 cat = pd.DataFrame()
 for i in lz:
@@ -239,9 +241,6 @@ for i in lz:
     #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
     result = adata.uns['rank_genes_groups']
     groups = result['names'].dtype.names
-    pd.DataFrame(
-            {group + '_' + key[:1]: result[key][group]
-            for group in groups for key in ['names', 'pvals']}).head(500)
     pval_table = pd.DataFrame(
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals']}).head(500)
@@ -249,7 +248,7 @@ for i in lz:
  #   pval_table.to_excel(os.path.join(BaseDirectory, 't-test_pval_table_500genes_conditions' + str(i) + '.xlsx'), engine='openpyxl')
 
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1) + '.xlsx'))
+    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1) + '_' + method + '.xlsx'))
 
 
 
