@@ -4,6 +4,10 @@
 Created on Thu Jun  4 11:53:45 2020
 
 @author: smith
+
+Script to download 10X Genomics sequencing data off of Minerva @ Mount Sinai
+
+
 """
 
 import urllib
