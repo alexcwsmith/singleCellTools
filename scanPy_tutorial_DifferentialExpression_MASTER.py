@@ -218,7 +218,7 @@ list1 = s[:half]
 list2 = s[half-1:]
 lz = list(zip(list1, list2))
 
-###CALCULATE GENES UPREGULATED IN GROUP 1:
+###CALCULATE GENES UPREGULATED IN GROUP 2:
 cat = pd.DataFrame()
 for i in lz:
     sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=500, method='wilcoxon')
@@ -232,7 +232,7 @@ for i in lz:
             for group in groups for key in ['names', 'pvals']}).head(500)
     cat = pd.concat([cat, pval_table], axis=1)
     cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2) + '.xlsx'))
-###CALCULATE GENES UPREGULATED IN GROUP 2: 
+###CALCULATE GENES UPREGULATED IN GROUP 1: 
 cat = pd.DataFrame()
 for i in lz:
     sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[0])], reference=str(i[1]), n_genes=500, method='wilcoxon')
