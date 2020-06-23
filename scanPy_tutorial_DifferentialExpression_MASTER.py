@@ -19,7 +19,7 @@ import openpyxl
 ###SET DIRECTORY TO READ/WRITE DATA. SET THE SPYDER WORKING DIRECTORY TO THE SAME PATH (TOP RIGHT OF SPYDER).
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
 BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V2/'
-sampleName = 'DP_OC_MERGED' #This is used for name result output files
+sampleName = 'DP_OC_Saline_Merged' #This is used for name result output files
 
 ###SET SCANPY SETTINGS:
 sc.settings.verbosity = 3  # verbosity: errors (0), warnings (1), info (2), hints (3)
@@ -70,15 +70,18 @@ anno = pd.concat([group1, group2], axis=0)
 adata.obs['condition'] = anno['condition'].values
 
 #Name the groups, for naming of result output files only:
-g1 = 'OC'
-g2 = 'Saline'
+g1n = 'Saline'
+g2n = 'OC'
+
+groupNames = {"1" : g1n, "2" : g2n}
+
 
 ###EXPLORE DATA, FILTER HIGHEST EXPRESSING GENES:
 sc.pl.highest_expr_genes(adata, n_top=50, save='_' + str(sampleName) + '_highestExpressingGenes')
 sc.pp.filter_cells(adata, min_genes=200)
 sc.pp.filter_genes(adata, min_cells=3)
 sc.pp.calculate_qc_metrics(adata)
-qc = sc.pp.calculate_qc_metrics(adata)
+sc.pp.calculate_qc_metrics(adata)
 
 ###CALCULATE % MITOCHONDRIAL GENES FOR EACH CELL, AND ADD TO ADATA.OBS:
 mito_genes = adata.var_names.str.startswith('mt-') 
@@ -94,7 +97,7 @@ sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_g
 
 
 ###SAVE THE CURRENT ADATA STATE, CAN REVERT TO THIS WHILE TUNING PARAMETERS:
-adata_raw = adata
+adata.raw = adata
 
 ###FILTER - TUNE THESE PARAMETERS
 max_genes = 4000 #Look at the genes_counts output figure from previous step to decide where you want your cutoff.
@@ -146,15 +149,17 @@ sc.pl.pca_loadings(adata, components=list(np.arange(30)), save='_' + str(sampleN
 
 #COMPUTING NEIGHBORHOOD GRAPH:
 #Uses PCA representation of data matrix
-sc.pp.neighbors(adata, n_neighbors=10, n_pcs=30)
+###LOOK AT SAVED FIGURE W/ SUFFIX _PCA_VarianceRatio AND CHOOSE NUMBER OF PCs BEFORE APEX (HERE ~20)
+n_neighbors = 25
+n_pcs = 10
+sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs)
 sc.tl.umap(adata)
-sc.pl.umap(adata, color=labeled_genes, save='_' + str(sampleName) + '_umap_labeled_raw') #'Slc17a7', 'Slc17a6', 'Cxcr6', 'Ache', 'Olig1'
-
-###THIS REQUIRES GENES IN LABELED_GENES TO BE IN HIGHLY VARIABLE LIST. NOT SUPER USEFUL:
-sc.pl.umap(adata, color=labeled_genes, use_raw=False, save='_' + str(sampleName) + '_umap_filtered')
+sc.pl.umap(adata, color=labeled_genes, save='_' + str(sampleName) + '_umap_labeled_raw_50_20') #'Slc17a7', 'Slc17a6', 'Cxcr6', 'Ache', 'Olig1'
+###THIS REQUIRES GENES IN LABELED_GENES TO BE IN HIGHLY VARIABLE LIST:
+sc.pl.umap(adata, color=labeled_genes, use_raw=False, save='_' + str(sampleName) + '_nNeighbors' + str(n_neighbors) + '_nPCs' + str(n_pcs) + '_umap_filtered')
 
 ###CLUSTER DATA:
-clu = sc.tl.louvain(adata)
+sc.tl.louvain(adata)
 labeled_genes.insert(0,'louvain')
 sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_clusters_labeled')
 
@@ -167,14 +172,16 @@ adata.obs.condition=adata.obs.condition.astype('category')
 ###RUN STATS, NOTE 't-test' can be changed to 'wilcoxon':
 ###COMPARE EXPRESSION BY CONDITION (EQUIVALENT TO BULK-SEQ):
 sc.settings.verbosity = 2
-sc.tl.rank_genes_groups(adata, 'condition', method='t-test')
-sc.pl.rank_genes_groups(adata, groupby='condition', n_genes=25, sharey=False, save='_' + str(sampleName) + '_t-test_conditions')
+method = 'wilcoxon' #t-test, wilcoxon, or logreg
+
+sc.tl.rank_genes_groups(adata, 'condition', method=method)
+sc.pl.rank_genes_groups(adata, groupby='condition', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_conditions')
 ###FIND UPREGULATED GENES IN EACH CLUSTER COMPARED TO ALL OTHER CLUSTERS:
-sc.tl.rank_genes_groups(adata, 'louvain', method='t-test')
-sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_t-test_clusters')
-###FIND UPREGULATED GENES IN EACH CLUSTER SEPARATED BY TREATMENT CONDITION:
-sc.tl.rank_genes_groups(adata, 'pairs', method='t-test')
-sc.pl.rank_genes_groups(adata, groupby='pairs', n_genes=25, sharey=False, save='_' + str(sampleName) + '_t-test_clusters_grouped')
+sc.tl.rank_genes_groups(adata, 'louvain', method=method)
+sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters')
+###FIND UPREGULATED GENES IN EACH CLUSTER SEPARATED SEPARATED BY TREATMENT CONDITION:
+sc.tl.rank_genes_groups(adata, 'pairs', method=method)
+sc.pl.rank_genes_groups(adata, groupby='pairs', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_grouped')
 
 ###WRITE RESULTS:
 adata.write(results_file)
@@ -183,11 +190,13 @@ adata.write(results_file)
 adata.read(results_file)
 
 ###MAKE TABLES OF GENES IN EACH CLUSTER
-sc.tl.rank_genes_groups(adata, 'louvain', method='t-test')
-sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_t-test_clusters')
+method = 'wilcoxon' #t-test, wilcoxon, or logreg
+
+sc.tl.rank_genes_groups(adata, 'louvain', method=method)
+sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters')
 pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
 table = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
-table.to_excel(os.path.join(BaseDirectory, sampleName + '_t-test_condition_table.xlsx'), engine='openpyxl')
+table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_cluster_table.xlsx'), engine='openpyxl')
 #make table with p-values included
 result = adata.uns['rank_genes_groups']
 groups = result['names'].dtype.names
@@ -197,7 +206,7 @@ pd.DataFrame(
 pval_table = pd.DataFrame(
         {group + '_' + key[:1]: result[key][group]
         for group in groups for key in ['names', 'pvals']}).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
-pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_t-test_pval_table_500genes_conditions.xlsx'), engine='openpyxl')
+pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_pval_table_500genes_clusters.xlsx'), engine='openpyxl')
 
 
 ###DIFFERENTIAL EXPRRESSION OF GENES WITHIN CLUSTERS:
