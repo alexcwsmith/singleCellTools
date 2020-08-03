@@ -3,16 +3,10 @@
 """
 Created on Sun Jul  5 20:57:34 2020
 
-From example template at:
-    http://localhost:8888/notebooks/goatools/notebooks/goea_nbt3102.ipynb
 
 @author: smith
 """
-from __future__ import print_function
-import pandas as pd
-import numpy as np
-import os
-from Bio import Entrez
+
 import ACWS_GOAtools as go
 
 """
@@ -22,19 +16,17 @@ Before starting anything in this script, open ACWS_GOAtools.py and change variab
     comparison - change to descriptor of data you are analyzing, example 'UpregulatedSaline'
 """
 
-comparison = 'DiffExp_UpOC'
+comparison = 'MarkerGenesV4'
 
 #Run for a single cluster
-go.runGOanalysis('Cluster3')
+go._runGOanalysis('Cluster0')
 
 #Make a list of clusters and run for all. Change integer to number of clusters.
 clusters = ['Cluster' + str(x) for x in range(20)]
-for cluster in clusters:
-    go.runGOanalysis(cluster)
+newGeneIndex = go.runGOanalysis(clusters, processes=8)
 
-
-GOcategory = 'MF' #Can be 'MF' for molecular  functions, 'BP' for biogical processes, or 'CC' for cellular components
-comparison = 'DiffExp_UpOC'
+#Combine individual cluster data files into one large data file
+GOcategory = 'CC' #Can be 'MF' for molecular  functions, 'BP' for biogical processes, or 'CC' for cellular components
 go.combineGOresults(clusters, GOcategory, comparison)
 
 
