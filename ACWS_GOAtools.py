@@ -17,16 +17,18 @@ from goatools.anno.genetogo_reader import Gene2GoReader
 from genes_ncbi_10090_proteincoding import GENEID2NT as GeneID2nt_mus
 from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
 from Bio import Entrez
+from pathos.pools import ProcessPool
+
 Entrez.email = 'alexander.smith@mssm.edu'
 Entrez.api_key = '8f015d17da5ac2df68b84d558b46e5150508'
 
-#Change this to true before first import:
+#Change this to true before first import in new working directory:
 download = False
 
-comparison = 'DiffExp_DownOC'
-goaResultDir = '/home/smith/Smith_Scripts/NLP_GeneExpression/spaCy_model062920/Results/GOA_Results/'
-genesDf = pd.read_excel('/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V2/results_maxGenes3000_maxMito.05_MinDisp0.2/DP_OC_Saline_Merged_DiffExp_UpregulatedSaline_t-test.xlsx', index_col=0)
-
+comparison = 'MarkerGenesV4'
+goaResultDir = '/home/smith/Smith_Scripts/NLP_GeneExpression/spaCy_model062920/Results/MarkerGenesV4_Results/'
+genesDf = pd.read_excel('/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V4/DP_OCvsSaline_V4_t-test_pval_table_500genes_clusters.xlsx', index_col=0)
+geneIndex = pd.read_excel(os.path.join(goaResultDir, 'EntrezIndex.xlsx'), index_col=0)
 
 if download:
     obo_fname = download_go_basic_obo()
@@ -35,7 +37,7 @@ if download:
 if not download:
     obo_fname = '/d1/studies/singleCellTools/go-basic.obo'
     fin_gene2go = '/d1/studies/singleCellTools/gene2go'
-    
+
 obodag = GODag("go-basic.obo")
 objanno = Gene2GoReader(fin_gene2go, taxids=[10090])
 ns2assoc = objanno.get_ns2assc()
@@ -49,16 +51,14 @@ goeaobj = GOEnrichmentStudyNS(
         alpha = 0.05, # default significance cut-off
         methods = ['fdr_bh']) # defult multipletest correction method
 
-indexDirectory = '/home/smith/Smith_Scripts/AllenSDK/CircuitFinder/Indexes/'
-geneIndex = pd.read_excel(os.path.join(indexDirectory, 'ISH_experiment_gene_index.xlsx'), index_col=0)
 
-def getEntrezIDs(genes, setName):
+def getEntrezIDs(genes):
     ID = []
     IDs = []
     nullGenes = []
     for gene in genes:
         try:
-            gene_info = geneIndex.loc[geneIndex.acronym==str(gene)]
+            gene_info = geneIndex.loc[geneIndex.symbol==str(gene)]
             entrez_id = gene_info['entrez_id'].astype(int)
             eid = entrez_id.unique()
             if len(eid) == 0:
@@ -72,7 +72,7 @@ def getEntrezIDs(genes, setName):
             IDs.append(item)
     return(IDs, nullGenes)
 
-def runGOanalysis(cluster):
+def _runGOanalysis(cluster, n_genes=75):
     clusterNum=cluster.replace('Cluster', '')
     genesList = []
     if comparison == 'DiffExp_DownOC':
@@ -81,14 +81,17 @@ def runGOanalysis(cluster):
     elif comparison == 'DiffExp_UpOC':
         sigGenes = genesDf.loc[genesDf['(2, ' + str(clusterNum) + ')_p'] < .05]
         genesList = sigGenes['(2, ' + str(clusterNum) + ')_n'].tolist()        
-    elif comparison =='MarkerGenes':
+    elif comparison =='MarkerGenesV4':
         genesList = genesDf[str(clusterNum) + '_n']
 
+    genesList =genesList[:n_genes]
+    
     setName = cluster + '_' + comparison
-    entrezIDlist, nullGenes = getEntrezIDs(genesList, setName)
+    entrezIDlist, nullGenes = getEntrezIDs(genesList)
     
     print(str(len(entrezIDlist)) + " Entrez IDs retrieved, searching NCBI for " + str(len(nullGenes)) + " genes")
     
+    newGeneList = []
     newEntrezList = []
     unfoundList = []
     for gene in nullGenes:
@@ -96,9 +99,16 @@ def runGOanalysis(cluster):
         record = Entrez.read(search)
         ID = record.get('IdList')
         if not len(ID) == 0:
+            newGeneList.append(gene)
             newEntrezList.append(ID[0])
         else:
             unfoundList.append(gene)
+            
+#    geneIndex = pd.read_excel(os.path.join(goaResultDir, 'EntrezIndex.xlsx'), index_col=0)
+    newEntrez = pd.DataFrame([newEntrezList, newGeneList]).T
+    newEntrez.columns=['entrez_id', 'symbol']
+#    geneIndex = pd.concat([geneIndex, newEntrez], axis=0)
+#    geneIndex.to_excel(os.path.join(goaResultDir, 'EntrezIndex.xlsx'))
             
     print(str(len(newEntrezList)) + " additional Entrez IDs retrieved, " + str(len(unfoundList)) + " genes with no results")
     
@@ -125,10 +135,10 @@ def runGOanalysis(cluster):
         CC=ctr['CC'])) # cellular_component
     
     
-    goeaobj.wr_xlsx(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA_Results.xlsx"), goea_results_sig)
-    goeaobj.wr_txt(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA_Results.txt"), goea_results_sig)
+    goeaobj.wr_xlsx(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA_Results_" + str(n_genes) + "genes.xlsx"), goea_results_sig)
+ #   goeaobj.wr_txt(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA_Results.txt"), goea_results_sig)
     
-    plot_results(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA.png"), goea_results_sig)
+    plot_results(os.path.join(goaResultDir, cluster + '_' + comparison + '_' + str(n_genes) + "genes_GOA.png"), goea_results_sig)
     
     goid_subset = [
         'GO:0098984', # CC neuron to neuron synapse
@@ -157,15 +167,16 @@ def runGOanalysis(cluster):
     """
     
     
-    plot_gos(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA_Subset_Plot.png"), 
+    plot_gos(os.path.join(goaResultDir, cluster + '_' + comparison + "_" + str(n_genes) + "genes_GOA_Subset_Plot.png"), 
         goid_subset, # Source GO ids
         obodag,
         goea_results=goea_results_all, # use pvals for coloring
         # We can further configure the plot...
-        id2symbol=geneid2symbol, # Print study gene Symbols, not Entrez GeneIDs
+ #       id2symbol=geneid2symbol, # Print study gene Symbols, not Entrez GeneIDs
         study_items=6, # Only only 6 gene Symbols max on GO terms
         items_p_line=3, # Print 3 genes per line
         )
+    return(newEntrez)
 
 def combineGOresults(clusters, GOcategory, comparison):
     """
@@ -187,7 +198,7 @@ def combineGOresults(clusters, GOcategory, comparison):
     """
     catdf1 = pd.DataFrame()
     for cluster in clusters:
-        resDf = pd.read_excel(os.path.join(goaResultDir, cluster + '_' + comparison + '_GOA_Results.xlsx'), index_col=0)
+        resDf = pd.read_excel(os.path.join(goaResultDir, cluster + '_' + comparison + "_GOA_Results_" + str(n_genes) + "genes.xlsx"), index_col=0)
         res = resDf.loc[resDf['NS']==GOcategory]
         res = res.reset_index()
         res = res.iloc[:,[0,3,9]]
@@ -210,9 +221,19 @@ def combineGOresults(clusters, GOcategory, comparison):
         df2['clusters'] = pd.Series([clus])
         catdf2 = pd.concat([catdf2, df2], axis=0)   
     catdf2 = catdf2.dropna(how='any', subset=['clusters'])
-    catdf2 = catdf2.sort_values(by='count', ascending=False)
+    catdf2['weight'] = catdf2['ave_corrected_pval'] / catdf2['count']
+    catdf2 = catdf2.sort_values(by='weight', ascending=True)
     catdf2.to_excel(os.path.join(goaResultDir, GOcategory + '_GOA_Enriched_' + comparison + '_Combined.xlsx'))
+    
 
-
-
-
+def runGOanalysis(clusters, processes=10):
+    df = pd.DataFrame()
+    pool = ProcessPool(nodes=processes)
+    newDf = pool.map(_runGOanalysis, clusters)
+    pool.close()
+    pool.join()
+    df = pd.concat([df, newDf], axis=0)
+    geneIndex = pd.read_excel(os.path.join(goaResultDir, 'EntrezIndex.xlsx'), index_col=0)
+    geneIndex = pd.concat([geneIndex, newEntrez], axis=0)
+    geneIndex.to_excel(os.path.join(goaResultDir, 'EntrezIndex.xlsx'))
+    return(geneIndex)
