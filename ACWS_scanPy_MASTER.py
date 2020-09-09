@@ -289,7 +289,6 @@ sc.pl.heatmap(adata, var_names=markers, groupby='pairs', show_gene_labels=True, 
 sc.tl.dendrogram(adata, groupby='louvain')
 sc.pl.dendrogram(adata, groupby='louvain', orientation='left', save='_louvain')
 sc.tl.dendrogram(adata, groupby='pairs')
-sc.set_figure_params(fontsize=8, dpi=80, dpi_save=300, format='png')
 sc.pl.dendrogram(adata, groupby='pairs', orientation='left', save='_pairs')
 
 ###PLOT CORRELATION MATRIX:
