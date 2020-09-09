@@ -18,13 +18,13 @@ import openpyxl
 
 ###SET DIRECTORY TO READ/WRITE DATA. SET THE SPYDER WORKING DIRECTORY TO THE SAME PATH (TOP RIGHT OF SPYDER).
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
-BaseDirectory = '/d1/studies/cellranger/ACWS_DP/Batch2_Horde_DP_Sal_Merged/'
-sampleName = 'Batch2_Horde_DP_OC_Sal' #This is used for name result output files
+BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V5/'
+sampleName = 'DP_OCvsSaline' #This is used for name result output files
 
 ###SET SCANPY SETTINGS:
 sc.settings.verbosity = 3  # verbosity: errors (0), warnings (1), info (2), hints (3)
 sc.logging.print_versions()
-results_file = os.path.join(BaseDirectory, sampleName + '_scanpy_results.h5ad')  # the file that will store the analysis results
+results_file = os.path.join(BaseDirectory, sampleName + 'scanpy_results.h5ad')  # the file that will store the analysis results
 sc.set_figure_params(fontsize=10, dpi=80, dpi_save=300, format='png')
 
 
@@ -43,7 +43,7 @@ cells = pd.read_csv(os.path.join(BaseDirectory, 'barcodes.tsv'), sep='\t', names
 cells.head()
 #Make a list of barcodes:
 barcodes = cells.barcode.tolist()
-#Initialize result lists
+#Initiate lists
 cellsList = []
 groupList=[]
 #Split the barcodes from groups and append to their own lists:
@@ -56,8 +56,8 @@ anno = pd.DataFrame(data=(cellsList, groupList)).T
 anno.columns=['barcode', 'sample']
 #Split the data into groups & annotate - 
 #EDIT GROUP LISTS FOR YOUR SAMPLES. THIS SHOULD BE BASED ON THE ORDER OF THE SAMPLES IN THE CELLRANGER AGGR INDEX CSV, BUT YOU NEED TO DOUBLE CHECK INDIVIDUAL BARCODE TSVs:
-g1 = ['1','2', '4']
-g2 = ['3','5', '6', '7', '8']
+g1 = ['1','2','3']
+g2 = ['4','5','6']
 group1 = anno.loc[anno['sample'].isin(g1)]
 group1['condition']=1
 group1['condition'] = group1['condition'].astype('category')
@@ -70,23 +70,19 @@ anno = pd.concat([group1, group2], axis=0)
 adata.obs['condition'] = anno['condition'].values
 
 #Name the groups, for naming of result output files only:
-g1n = 'Control'
-g2n = 'Treated'
+g1n = ''
+g2n = 'Group2'
 
 groupNames = {"1" : g1n, "2" : g2n}
 
 ###IF SAMPLES WERE RUN IN MULTIPLE BATCHES (i.e. TAKEN TO THE CORE AT SEPARATE TIMES) ADD BATCH INFO TO ADATA:
-###IF NO BATCH CORRECTION, SKIP TO LINE 95
-b1 = ['1','2','4']
-b2 = ['3','5','6']
-b3 = ['7','8']
+b1 = ['1','3']
+b2 = ['2','4','5','6']
 batch1 = anno.loc[anno['sample'].isin(b1)]
 batch1['batch']=1
 batch2 = anno.loc[anno['sample'].isin(b2)]
 batch2['batch']=2
-batch3 = anno.loc[anno['sample'].isin(b3)]
-batch3['batch']=3
-batches = pd.concat([batch1, batch2, batch3])
+batches = pd.concat([batch1, batch2])
 
 adata.obs['batch']=batches['batch'].values
 adata.obs['batch']=adata.obs['batch'].astype('category')
@@ -103,6 +99,16 @@ mito_genes = adata.var_names.str.startswith('mt-')
 adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1).A1 / np.sum(adata.X, axis=1).A1 
 adata.obs['n_counts'] = adata.X.sum(axis=1).A1
 
+###CALCULATE MEAN & SD OF PERCENT_MITO & N_COUNTS
+mito_mean = np.mean(adata.obs.percent_mito)
+mito_std = np.std(adata.obs.percent_mito)
+mito_suggestedMax = mito_mean + mito_std
+print(mito_suggestedMax)
+
+n_genes_mean = np.mean(adata.obs.n_genes)
+n_genes_std = np.std(adata.obs.n_genes)
+n_genes_suggestedMax = n_genes_mean + n_genes_std
+print(genes_suggestedMax)
 
 ###PLOT % MITO & TOTAL COUNTS:
 sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
@@ -115,12 +121,12 @@ sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_g
 adata.raw = adata
 
 ###FILTER - TUNE THESE PARAMETERS
-max_genes = 3500 #Look at the genes_counts output figure from previous step to decide where you want your cutoff.
-max_mito = 0.05 #Look at percentMito output figure from previous step to decide on cutoff.
+max_genes = 3052 #Look at the genes_counts output figure from previous step to decide where you want your cutoff.
+max_mito = 0.2519 #Look at percentMito output figure from previous step to decide on cutoff.
 adata = adata[adata.obs['n_genes'] < max_genes, :]
 adata = adata[adata.obs['percent_mito'] < max_mito, :]
 sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) + '_filtered_mito_counts', title='Filtered < ' + str(max_genes) +  ' total counts')
-sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_filtered_genes_counts_test', title='Filtered < ' + str(max_mito) + ' mito')
+sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_filtered_genes_counts', title='Filtered < ' + str(max_mito) + ' mito')
 
 ###NORMALIZE & LOG TRANSFORM
 sc.pp.normalize_per_cell(adata)
@@ -129,10 +135,22 @@ sc.pp.log1p(adata)
 
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
 ###YOU WILL LIKELY WANT TO PLAY WITH THESE AND SEE HOW IT AFFECTS RESULTS.
-min_mean = .005
-max_mean = 3
-min_disp = 0.15
-sc.pp.highly_variable_genes(adata, min_mean=min_mean, max_mean=max_mean, min_disp=min_disp)
+sc.pp.highly_variable_genes(adata)
+
+###THE BELOW SUGGESTIONS ARE IN TESTING PHASE. THEY WORKED WELL ON MY DATA, WON'T NECESSARILY FOR YOURS:
+genes_min_percentile = 15
+genes_min_mean = np.percentile(adata.var.means, genes_min_percentile)
+print("Suggested min_mean = " + str(genes_min_mean))
+
+disp_mean = np.mean(adata.var.dispersions)
+disp_std = np.std(adata.var.dispersions)
+suggestedMinDisp = disp_mean - disp_std
+print("Suggested min_disp = " + str(suggestedMinDisp))
+
+min_mean = .001
+max_mean = 3.5
+min_disp = 0.244
+sc.pp.highly_variable_genes(adata, min_mean=min_mean, max_mean=max_mean, min_disp=min_disp, batch_key='batch')
 """This adds following dimensions to the data:
     'highly_variable', boolean vector (adata.var)
     'means', float vector (adata.var)
@@ -166,15 +184,15 @@ sc.pl.violin(adata, 'Oprm1', save='_' + str(sampleName) + '_Oprm1')
 sc.pl.violin(adata, ['Oprm1', 'Penk'], save='_' + str(sampleName) + '_Oprm1_Penk')
 
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
-labeled_genes = ['Oprm1', 'Slc17a7', 'Slc17a6', 'Slc1a2', 'Aldh1l1', 'Gad1', 'Gad2', 'Tmem119', 'Ache',  'Olig2', 'Dbi', 'Foxj1', 'Cx3cr1']
+labeled_genes = ['Thy1', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Foxj1', 'Fam216b', 'Tagln', 'Cldn5', 'Flt1']
 
 #RUN PCA
-n_comps = 25
+n_comps = 20
 sc.tl.pca(adata, n_comps=n_comps, svd_solver='arpack')
 sc.pl.pca(adata, color=labeled_genes, save='_' + str(sampleName) + '_' + str(n_comps) + 'comps_PCA_labeled')
 sc.pl.pca_variance_ratio(adata, log=True, save='_' + str(n_comps) + '_ncomps_PCA_VarianceRatio')
 ###LOOK AT VARIANCE_RATIO OUTPUT FILE BEFORE PROCEEDING TO NEXT STEP
-n_pcs = 10
+n_pcs = 6
 sc.pl.pca_overview(adata, save='_' + str(sampleName) + '_' + str(n_pcs) + 'PCs_PCA_Overview')
 sc.pl.pca_loadings(adata, components=list(np.arange(1, n_pcs+1)), save='_' + str(sampleName) + '_' + str(n_pcs) + '_PCs')
 
@@ -182,43 +200,74 @@ sc.pl.pca_loadings(adata, components=list(np.arange(1, n_pcs+1)), save='_' + str
 #Uses PCA representation of data matrix
 ###LOOK AT SAVED FIGURE W/ SUFFIX _PCA_VarianceRatio AND CHOOSE NUMBER OF PCs BEFORE APEX (HERE ~20)
 n_neighbors = 50
-n_pcs = 15
-min_dist = .05
+n_pcs = 6
+min_dist = .25
 sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs)
 sc.tl.umap(adata, min_dist=min_dist)
-sc.pl.umap(adata, color=labeled_genes, save='_' + str(sampleName) + '_' + str(n_neighbors) + 'neighbors_' + str(n_pcs) + 'PCs_umap_' + str(min_dist) + 'minDist_' + 'labeled_raw')
+sc.pl.umap(adata, color=labeled_genes, save='_' + str(sampleName) + '_' + str(n_neighbors) + 'neighbors_' + str(n_pcs) + 'PCs_umap_' + str(min_dist) + 'minDist_' + '_labeled_raw')
 ###THIS REQUIRES GENES IN LABELED_GENES TO BE IN HIGHLY VARIABLE LIST:
-labeled_genes_var = ['Oprm1', 'Penk', 'Slc17a6', 'Rorb', 'Slc1a2', 'Aldh1l1', 'Gfap', 'Gad1', 'Gad2', 'Olig2', 'Dbi', 'Cx3cr1']
+labeled_genes_var = ['Thy1', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Foxj1', 'Fam216b', 'Tagln', 'Cldn5', 'Flt1']
 sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, save='_' + str(sampleName) + '_nNeighbors' + str(n_neighbors) + '_nPCs' + str(n_pcs) + '_umap_filtered')
 
 ###CLUSTER DATA:
-sc.tl.louvain(adata)
+resolution = 0.9
+sc.tl.louvain(adata, resolution=resolution)
 labeled_genes.insert(0,'louvain')
-sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_clusters_labeled')
+sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution' + '_clusters_labeled_louvain')
 labeled_genes_var.insert(0,'louvain')
-sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_clusters_labeled_filtered')
+sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution' + '_clusters_labeled_louvain_filtered')
+
+###CLUSTER WITH LEIDEN ALGORITHM:
+resolution = 0.9
+sc.tl.leiden(adata, resolution=resolution)
+labeled_genes.insert(0,'leiden')
+sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution' + '_clusters_labeled_leiden')
+labeled_genes_var.insert(0,'leiden')
+sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution' + '_clusters_labeled_leiden_filtered')
 
 
-
-###SEPARATE CLUSTERS BY CONDITION & APPEND TO ADATA.OBS
+###SEPARATE LOUVAIN CLUSTERS BY CONDITION & APPEND TO ADATA.OBS
 pairs = list(zip(adata.obs['condition'], adata.obs['louvain'].astype('int')))
 adata.obs['pairs'] = pairs
 adata.obs['louvain'] = adata.obs['louvain'].values.remove_unused_categories()
 
-adata.obs.condition=adata.obs.condition.astype('category')
+###SEPARATE LEIDEN CLUSTERS BY CONDITION & APPEND TO ADATA.OBS
+pairs_leid = list(zip(adata.obs['condition'], adata.obs['leiden'].astype('int')))
+adata.obs['pairs_leiden'] = pairs_leid
+adata.obs['leiden'] = adata.obs['leiden'].values.remove_unused_categories()
+
+
+#COUNT NUMBER OF CELLS IN EACH CLUSTER:
+counts = adata.obs['pairs'].value_counts().sort_index()
+print(counts)
+
+#COUNT NUMBER OF CELLS IN EACH CLUSTER:
+counts_leid = adata.obs['pairs_leiden'].value_counts().sort_index()
+print(counts_leid)
+
+
 ###RUN STATS, NOTE 't-test' can be changed to 'wilcoxon':
 ###COMPARE EXPRESSION BY CONDITION (EQUIVALENT TO BULK-SEQ):
+adata.obs.condition=adata.obs.condition.astype('category')
 sc.settings.verbosity = 2
 method = 't-test' #t-test, wilcoxon, or logreg
 
 sc.tl.rank_genes_groups(adata, 'condition', method=method)
 sc.pl.rank_genes_groups(adata, groupby='condition', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_conditions')
-###FIND UPREGULATED GENES IN EACH CLUSTER COMPARED TO ALL OTHER CLUSTERS:
+###FIND UPREGULATED GENES IN EACH CLUSTER COMPARED TO ALL OTHER CLUSTERS - LOUVAIN:
 sc.tl.rank_genes_groups(adata, 'louvain', method=method)
-sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters')
-###FIND UPREGULATED GENES IN EACH CLUSTER SEPARATED SEPARATED BY TREATMENT CONDITION:
+sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_louvain')
+###FIND UPREGULATED GENES IN EACH CLUSTER SEPARATED SEPARATED BY TREATMENT CONDITION - LOUVAIN:
 sc.tl.rank_genes_groups(adata, 'pairs', method=method)
-sc.pl.rank_genes_groups(adata, groupby='pairs', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_grouped')
+sc.pl.rank_genes_groups(adata, groupby='pairs', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_grouped_louvain')
+###FIND UPREGULATED GENES IN EACH CLUSTER COMPARED TO ALL OTHER CLUSTERS - LOUVAIN:
+sc.tl.rank_genes_groups(adata, 'leiden', method=method)
+sc.pl.rank_genes_groups(adata, groupby='leiden', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_leiden')
+###FIND UPREGULATED GENES IN EACH CLUSTER SEPARATED SEPARATED BY TREATMENT CONDITION - LEIDEN:
+sc.tl.rank_genes_groups(adata, 'pairs_leiden', method=method)
+sc.pl.rank_genes_groups(adata, groupby='pairs_leiden', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_grouped_leiden')
+
+
 
 ###WRITE RESULTS:
 adata.write(results_file)
@@ -227,20 +276,25 @@ adata.write(results_file)
 adata.read(results_file)
 
 ###MAKE TABLES OF GENES IN EACH CLUSTER
-method = 'wilcoxon' #t-test, wilcoxon, or logreg
+method = 't-test' #t-test, wilcoxon, or logreg
+cluster_method = 'louvain'
 
-sc.tl.rank_genes_groups(adata, 'louvain', n_genes=500, method=method)
-sc.pl.rank_genes_groups(adata, groupby='louvain', n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters')
+
+sc.tl.rank_genes_groups(adata, cluster_method, n_genes=500, method=method)
+sc.pl.rank_genes_groups(adata, groupby=cluster_method, n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_' +  cluster_method + '_clusters')
 pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
 table = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
-table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_cluster_table.xlsx'), engine='openpyxl')
+table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_' + cluster_method + '_cluster_table.xlsx'), engine='openpyxl')
 #make table with p-values included
 result = adata.uns['rank_genes_groups']
 groups = result['names'].dtype.names
+pd.DataFrame(
+        {group + '_' + key[:1]: result[key][group]
+        for group in groups for key in ['names', 'pvals']}).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
 pval_table = pd.DataFrame(
         {group + '_' + key[:1]: result[key][group]
         for group in groups for key in ['names', 'pvals']}).head(500) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
-pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_pval_table_500genes_clusters.xlsx'), engine='openpyxl')
+pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_pval_table_500genes_' + cluster_method + '_clusters.xlsx'), engine='openpyxl')
 
 
 ###DIFFERENTIAL EXPRRESSION OF GENES WITHIN CLUSTERS:
@@ -249,26 +303,42 @@ pairs_set = list(set(pairs))
 s = sorted(pairs_set)
 half = int((len(s)/2)+1)
 list1 = s[:half]
-list2 = s[half-1:]
+list2 = s[half:]
+list2.insert(8,(2,8))
+#list2.insert(6,(2,6))
+#list2.insert(7,(2,7))
 lz = list(zip(list1, list2))
 
+pairs_leid = list(zip(adata.obs['condition'], adata.obs['leiden'].astype('int')))
+pairs_leid_set = list(set(pairs_leid))
+s_leid = sorted(pairs_leid_set)
+half_leid = int((len(s_leid)/2)+1)
+list1_leid = s_leid[:half_leid-1]
+list2_leid = s_leid[half_leid-1:]
+#list2_leid.insert(8,(2,8))
+#list2.insert(6,(2,6))
+#list2.insert(7,(2,7))
+lz_leid = list(zip(list1_leid, list2_leid))
+
+
 ###CALCULATE GENES UPREGULATED IN GROUP 2:
-method = 'wilcoxon' #t-test, wilcoxon, or logreg
+method = 't-test' #t-test, wilcoxon, or logreg
+cluster_method = 'leiden'
 
 cat = pd.DataFrame()
-for i in lz:
-    sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=500, method=method)
+for i in lz[10:]:
+    sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), n_genes=500, method=method)
     result = adata.uns['rank_genes_groups']
     groups = result['names'].dtype.names
     pval_table = pd.DataFrame(
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals']}).head(500)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '.xlsx'))
+    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1: 
 cat = pd.DataFrame()
-for i in lz:
-    sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[0])], reference=str(i[1]), n_genes=500, method=method)
+for i in lz[10:]:
+    sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), n_genes=500, method=method)
     #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
     result = adata.uns['rank_genes_groups']
     groups = result['names'].dtype.names
@@ -276,7 +346,7 @@ for i in lz:
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals']}).head(500)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '.xlsx'))
+    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '.xlsx'))
 
 
 ###PLOT AS HEATMAP:
@@ -285,15 +355,17 @@ markers = t[0].tolist()
 sc.pl.heatmap(adata, var_names=markers, groupby='louvain', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters')
 sc.pl.heatmap(adata, var_names=markers, groupby='pairs', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_pairs')
 
+
 ###HEIRARCHICAL CLUSTERING:
 sc.tl.dendrogram(adata, groupby='louvain')
-sc.pl.dendrogram(adata, groupby='louvain', orientation='left', save='_louvain')
+sc.pl.dendrogram(adata, groupby='louvain', save='_louvain')
 sc.tl.dendrogram(adata, groupby='pairs')
-sc.pl.dendrogram(adata, groupby='pairs', orientation='left', save='_pairs')
+sc.pl.dendrogram(adata, groupby='pairs', save='_pairs')
+
 
 ###PLOT CORRELATION MATRIX:
 sc.pl.correlation_matrix(adata, groupby='louvain', save='_louvain')
-sc.pl.correlation_matrix(adata, groupby='pairs', dendrogram=True, save='_pairs')
+sc.pl.correlation_matrix(adata, groupby='pairs', save='_pairs')
 sc.pl.correlation_matrix(adata, groupby='condition', save='_condition')
 
 
