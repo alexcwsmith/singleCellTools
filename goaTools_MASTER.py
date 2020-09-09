@@ -16,13 +16,13 @@ Before starting anything in this script, open ACWS_GOAtools.py and change variab
     comparison - change to descriptor of data you are analyzing, example 'UpregulatedSaline'
 """
 
-comparison = 'MarkerGenesV4'
+comparison = 'Clem_Oxy'
 
 #Run for a single cluster
-go._runGOanalysis('Cluster0')
+go._runGOanalysis('Cluster8', n_genes=75)
 
 #Make a list of clusters and run for all. Change integer to number of clusters.
-clusters = ['Cluster' + str(x) for x in range(20)]
+clusters = ['Cluster' + str(x) for x in range(16)]
 newGeneIndex = go.runGOanalysis(clusters, processes=8)
 
 #Combine individual cluster data files into one large data file
