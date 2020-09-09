@@ -19,15 +19,16 @@ from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
 from Bio import Entrez
 from pathos.pools import ProcessPool
 
-Entrez.email = 'alexander.smith@mssm.edu'
-Entrez.api_key = '8f015d17da5ac2df68b84d558b46e5150508'
+
+Entrez.email = #enter your email here
+Entrez.api_key = #enter your key here
 
 #Change this to true before first import in new working directory:
 download = False
 
-comparison = 'MarkerGenesV4'
-goaResultDir = '/home/smith/Smith_Scripts/NLP_GeneExpression/spaCy_model062920/Results/MarkerGenesV4_Results/'
-genesDf = pd.read_excel('/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V4/DP_OCvsSaline_V4_t-test_pval_table_500genes_clusters.xlsx', index_col=0)
+comparison = 'ClemOxy'
+goaResultDir = '/d1/studies/Alex_scSeq/Clem_Oxy_GOA/'
+genesDf = pd.read_excel('//d1/studies/Alex_scSeq/Clem_Oxy_GOA/Clem_560_561_590_t-test_cluster_table.xlsx', index_col=0)
 geneIndex = pd.read_excel(os.path.join(goaResultDir, 'EntrezIndex.xlsx'), index_col=0)
 
 if download:
@@ -43,7 +44,7 @@ objanno = Gene2GoReader(fin_gene2go, taxids=[10090])
 ns2assoc = objanno.get_ns2assc()
 for nspc, id2gos in ns2assoc.items():
     print("{NS} {N:,} annotated mouse genes".format(NS=nspc, N=len(id2gos)))
-goeaobj = GOEnrichmentStudyNS(
+    goeaobj = GOEnrichmentStudyNS(
         GeneID2nt_mus.keys(), # List of mouse protein-coding genes
         ns2assoc, # geneid/GO associations
         obodag, # Ontologies
@@ -81,8 +82,8 @@ def _runGOanalysis(cluster, n_genes=75):
     elif comparison == 'DiffExp_UpOC':
         sigGenes = genesDf.loc[genesDf['(2, ' + str(clusterNum) + ')_p'] < .05]
         genesList = sigGenes['(2, ' + str(clusterNum) + ')_n'].tolist()        
-    elif comparison =='MarkerGenesV4':
-        genesList = genesDf[str(clusterNum) + '_n']
+    else:
+        genesList = genesDf['(' + str(clusterNum) + '_n)']
 
     genesList =genesList[:n_genes]
     
