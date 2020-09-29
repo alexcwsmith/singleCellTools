@@ -15,11 +15,12 @@ from skimage import io
 import os
 import matplotlib
 import openpyxl
+%logstart -o scanPy_log.txt
 
 ###SET DIRECTORY TO READ/WRITE DATA. SET THE SPYDER WORKING DIRECTORY TO THE SAME PATH (TOP RIGHT OF SPYDER).
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
-BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V8/'
-sampleName = 'DP_OCvsSalineV8' #This is used for name result output files
+BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V9/'
+sampleName = 'DP_OCvsSalineV9' #This is used for name result output files
 batches = False #Set to True if you need to do batch correction (i.e. if samples were taken to core and sequenced at different times)
 
 ###SET SCANPY SETTINGS:
@@ -282,7 +283,7 @@ sc.pl.rank_genes_groups(adata, groupby='pairs_leiden', n_genes=25, sharey=False,
 ###MAKE TABLES OF GENES IN EACH CLUSTER
 method = 't-test' #t-test, wilcoxon, or logreg
 cluster_method = 'leiden'
-n_genes=3696
+n_genes=3696 #set to adata.var.shape[0] to include all genes
 
 
 sc.tl.rank_genes_groups(adata, cluster_method, n_genes=n_genes, method=method)
@@ -295,10 +296,10 @@ result = adata.uns['rank_genes_groups']
 groups = result['names'].dtype.names
 pd.DataFrame(
         {group + '_' + key[:1]: result[key][group]
-        for group in groups for key in ['names', 'pvals']}).head(3696) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
+        for group in groups for key in ['names', 'pvals']}).head(n_genes)
 pval_table = pd.DataFrame(
         {group + '_' + key[:1]: result[key][group]
-        for group in groups for key in ['names', 'pvals']}).head(3696) #ALTER NUMBER TO SPECIFIC NUMBER OF GENES TO LIST
+        for group in groups for key in ['names', 'pvals']}).head(n_genes)
 pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_pval_table_' + cluster_method + '_clusters_' + str(n_genes) + 'genes.xlsx'), engine='openpyxl')
 
 
@@ -309,7 +310,7 @@ s = sorted(pairs_set)
 half = int((len(s)/2))
 list1 = s[:half]
 list2 = s[half:]
-lz = list(zip(list1, list2))
+lz_louvain = list(zip(list1, list2))
 
 pairs_leid = list(zip(adata.obs['condition'], adata.obs['leiden'].astype('int')))
 pairs_leid_set = list(set(pairs_leid))
@@ -317,19 +318,30 @@ s_leid = sorted(pairs_leid_set)
 half_leid = int((len(s_leid)/2)+1)
 list1_leid = s_leid[:half_leid-1]
 list2_leid = s_leid[half_leid-1:]
-#list2_leid.insert(8,(2,8))
-#list2.insert(6,(2,6))
-#list2.insert(7,(2,7))
-lz_leid = list(zip(list1_leid, list2_leid))
+lz_leiden = list(zip(list1_leid, list2_leid))
+
+#IMPORTANT: INSPECT LZ_LOUVAIN AND LZ_LEID TO MAKE SURE THEY ARE CORRECTLY ALIGNED. 
+#EMPTY CLUSTERS IN ONE GROUP WILL CAUSE PROBLEMS.
+lz_louvain
+
+lz_leiden
 
 
 ###CALCULATE GENES UPREGULATED IN GROUP 2:
 method = 't-test' #t-test, wilcoxon, or logreg
-cluster_method = 'louvain'
+cluster_method = 'leiden'
 n_genes = 3696
 
+if cluster_method=='louvain':
+    list2compare=lz_louvain
+elif cluster_method=='leiden':
+    list2comapre=lz_leiden
+else:
+    raise ValueError("Invalid cluster method selected")
+
+###CALCULATE GENES UPREGUALTED IN GROUP 2:
 cat = pd.DataFrame()
-for i in lz_leid:
+for i in list2compare:
     if cluster_method=='leiden':
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), n_genes=n_genes, method=method)
     elif cluster_method=='louvain':
@@ -343,7 +355,7 @@ for i in lz_leid:
     cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1: 
 cat = pd.DataFrame()
-for i in lz_leid:
+for i in list2compare:
     if cluster_method=='leiden':
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, method=method)
     elif cluster_method=='louvain':
@@ -369,8 +381,6 @@ markers = t[18].tolist()
 sc.pl.heatmap(adata, var_names=labeled_genes, groupby='leiden', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_leiden_labeledGenes')
 
 labeled_genes = ['Oprm1', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
-
-
 markers = ['Oprm1', 'Cmss1', 'Xylt1', "Camk2a", 'Grik3', 'Pcbp3', 'Grik1', 'Cux2', 'Rgs20', 'Luzp2', 'Hs6st3', 'Plp1', 'Pcbp3', 'Grm8', 'Inpp5d', 'Vcan', 'Arhgap6', 'Cpa6', 'Prex2', 'Flt1']
 
 ###HEIRARCHICAL CLUSTERING:
@@ -392,12 +402,18 @@ sc.pl.correlation_matrix(adata, groupby='pairs', save='_pairs')
 sc.pl.correlation_matrix(adata, groupby='condition', save='_condition')
 
 sc.tl.embedding_density(adata, basis='umap', groupby='condition', key_added='umap_density')
-sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density', save='_all')
-sc.pl.embedding_density(adata, basis='umap', key='umap_density', group=2, save='_group2')
+sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density', save='all')
+sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density_Group1', group=[1], save='Group1')
+sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density_Group2', group=[2], save='Group2')
 
+sc.tl.paga(adata, groups='louvain')
+sc.pl.paga(adata, save='_paga_louvain')
 sc.tl.paga(adata, groups='leiden')
-sc.pl.paga(adata, save='_paga')
+sc.pl.paga(adata, save='_paga_leiden')
 
+
+sc.tl.paga(adata, groups='pairs')
+sc.pl.paga(adata, single_component=True, save='_paga_pairs_louvain')
 sc.tl.paga(adata, groups='pairs_leiden')
 sc.pl.paga(adata, single_component=True, save='_paga_pairs_leiden')
 
