@@ -413,7 +413,7 @@ for i in list2compare:
 
 ###OPTIONALLY RECLUSTER A SINGLE CLUSTER INTO FURTHER SUBTYPES
 cluster = 5
-sc.tl.leiden(adata, restrict_to=('leiden', ['5']), resolution=resolution, n_iterations=iterations)
+sc.tl.leiden(adata, restrict_to=('leiden', [str(cluster)]), resolution=resolution, n_iterations=iterations)
 labeled_genes_var.insert(0, 'leiden_R')
 labeled_genes.insert(0, 'leiden_R')
 sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden_recluster' + str(cluster))
