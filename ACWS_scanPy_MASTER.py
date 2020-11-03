@@ -11,33 +11,46 @@ This is the main script for processing scRNA-Seq Data through ScanPy.
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import scanpy.external as sce
+import scprep
 from skimage import io
 import os
 import matplotlib
 import openpyxl
-%logstart -o scanPy_log.txt
+from datetime import datetime
+
+dt = str(datetime.today())
+date = dt.split(' ')[0]
+time = dt.split(' ')[1].split('.')[0]
+logname = 'scanpy_log_' + date + '_' + time + '.txt'
+%logstart -o eval(logname)
+
+new = False #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read results_file.
 
 ###SET DIRECTORY TO READ/WRITE DATA. SET THE SPYDER WORKING DIRECTORY TO THE SAME PATH (TOP RIGHT OF SPYDER).
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
-BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanPy_V11/'
-sampleName = 'DP_OCvsSalineV11' #This is used for name result output files
+BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanPy_V12/'
+sampleName = 'DP_OCvsSalineV12' #This is used for name result output files
 batches = False #Set to True if you need to do batch correction (i.e. if samples were taken to core and sequenced at different times)
 
 ###SET SCANPY SETTINGS:
+results_file = os.path.join(BaseDirectory, sampleName + 'scanpy_results.h5ad')  # the file that will store the analysis results
+results_file_partial = os.path.join(BaseDirectory, sampleName + 'scanpy_adata_prefiltering.h5ad')
+
 sc.settings.verbosity = 3  # verbosity: errors (0), warnings (1), info (2), hints (3)
 sc.settings.n_jobs=8 #use parallel processing when possible
 sc.logging.print_header()
-results_file = os.path.join(BaseDirectory, sampleName + 'scanpy_results.h5ad')  # the file that will store the analysis results
-results_file_partial = os.path.join(BaseDirectory, sampleName + 'scanpy_adata_prefiltering.h5ad')
 sc.set_figure_params(fontsize=14, dpi=80, dpi_save=600, format='svg')
 
-
-###LOAD DATA FROM MTX FILE:
-adata = sc.read_10x_mtx(
-    BaseDirectory,  # the directory with the `.mtx` file
-    var_names='gene_symbols',                  # use gene symbols for the variable names (variables-axis index)
-    cache=True)                                # write a cache file for faster subsequent reading
-adata.var_names_make_unique()  # this is unnecessary if using 'gene_ids'
+###LOAD DATA
+if not new:
+    sc.read(results_file)
+elif new:
+    adata = sc.read_10x_mtx(
+        BaseDirectory,  # the directory with the `.mtx` file
+        var_names='gene_symbols',                  # use gene symbols for the variable names (variables-axis index)
+        cache=True)                                # write a cache file for faster subsequent reading
+    adata.var_names_make_unique()  # this is unnecessary if using 'gene_ids'
 
 
 ###ADD CONDITION IDs TO ADATA ANNOTATIONS:
@@ -97,7 +110,7 @@ if batches:
 sc.pl.highest_expr_genes(adata, n_top=50, save='_' + str(sampleName) + '_highestExpressingGenes')
 sc.pp.filter_cells(adata, min_genes=300)
 sc.pp.filter_genes(adata, min_cells=3)
-sc.pp.calculate_qc_metrics(adata)
+sc.pp.calculate_qc_metrics(adata, inplace=True)
 
 ###CALCULATE % MITOCHONDRIAL GENES FOR EACH CELL, AND ADD TO ADATA.OBS:
 mito_genes = adata.var_names.str.startswith('mt-') 
@@ -105,6 +118,7 @@ adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1).A1 / np.sum(a
 adata.obs['n_counts'] = adata.X.sum(axis=1).A1
 
 ###CALCULATE MEAN & SD OF PERCENT_MITO & N_COUNTS
+###THE BELOW SUGGESTIONS ARE IN TESTING PHASE. THEY WORKED WELL ON MY DATA, WON'T NECESSARILY FOR YOURS:
 mito_mean = np.mean(adata.obs.percent_mito)
 mito_std = np.std(adata.obs.percent_mito)
 mito_suggestedMax = mito_mean + mito_std
@@ -141,17 +155,17 @@ sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) 
 sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_filtered_genes_counts', title='Filtered < ' + str(max_mito) + ' mito')
 
 ###NORMALIZE & LOG TRANSFORM
-sc.pp.normalize_per_cell(adata)
+sc.pp.normalize_total(adata, target_sum=1e4, max_fraction=.05, exclude_highly_expressed=True)
 sc.pp.log1p(adata)
 
 ###STORE THE RAW ADATA STATE AS A VARIABLE TO BE ABLE TO LABEL GENES THAT WERE FILTERED OUT ETC:
 adata.raw = adata
 
+
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
 ###YOU WILL LIKELY WANT TO PLAY WITH THESE AND SEE HOW IT AFFECTS RESULTS.
 sc.pp.highly_variable_genes(adata)
 
-###THE BELOW SUGGESTIONS ARE IN TESTING PHASE. THEY WORKED WELL ON MY DATA, WON'T NECESSARILY FOR YOURS:
 genes_min_percentile = 50
 genes_min_mean = np.percentile(adata.var.means, genes_min_percentile)
 print("Suggested min_mean = " + str(genes_min_mean))
@@ -181,7 +195,11 @@ adata.var.to_excel(os.path.join(BaseDirectory, 'Adata_var_raw_preFiltering.xlsx'
 ###ACTUALLY DO THE FILTERING
 sc.pl.highly_variable_genes(adata, save='_' + str(sampleName) + '_highlyVariableGenes')
 adata = adata[:, adata.var['highly_variable']]
-sc.pp.regress_out(adata, ['n_counts', 'percent_mito'], n_jobs=8)
+sc.pp.regress_out(adata, ['n_counts', 'percent_mito'], n_jobs=16)
+
+###RE-NORMALIZE AFTER FILTERING
+#sc.pp.normalize_total(adata, target_sum=1e4, max_fraction=.05, exclude_highly_expressed=False)
+
 
 #Batch effect correction:
 if batches:
@@ -194,9 +212,10 @@ adata.var.to_excel(os.path.join(BaseDirectory, str(sampleName) + 'HighlyVariable
 sc.pp.scale(adata, max_value=10)
 ###EXAMPLE HOW TO PLOT EXPRESSION DISTRIBUTION INDIVIDUAL GENES:
 sc.pl.violin(adata, 'Oprm1', save='_' + str(sampleName) + '_Oprm1')
-#You can also pass a list of genes here by just converting second argument to a list:
+#You can also pass a list of genes here:
 ieg=['Fos', 'Arc', 'Npas4', 'Cux2', 'Egr1', 'Oprm1', 'Slc17a6']
-sc.pl.stacked_violin(adata, ieg, groupby='condition', num_categories=2, standard_scale='obs', save='_' + str(sampleName) + 'IEGs')
+sc.pl.stacked_violin(adata, ieg, groupby='condition', num_categories=2, standard_scale='var', save='_' + str(sampleName) + '_IEGs_ssVar')
+sc.pl.stacked_violin(adata, ieg, groupby='condition', num_categories=2, standard_scale='obs', save='_' + str(sampleName) + '_IEGs_ssObs')
 
 
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
@@ -212,7 +231,7 @@ sc.pl.pca_variance_ratio(adata, log=True, save='_' + str(n_comps) + '_ncomps_PCA
 ###LOOK AT VARIANCE_RATIO OUTPUT FILE BEFORE PROCEEDING TO NEXT STEP
 n_pcs = 15
 sc.pl.pca_overview(adata, save='_' + str(sampleName) + '_' + str(n_pcs) + 'PCs_PCA_Overview')
-sc.pl.pca_loadings(adata, components=list(np.arange(1, n_pcs+1)), save='_' + str(sampleName) + '_' + str(n_pcs) + '_PCs')
+sc.pl.pca_loadings(adata, components=list(np.arange(1, n_pcs)), save='_' + str(sampleName) + '_' + str(n_pcs) + '_PCs')
 
 #COMPUTING NEIGHBORHOOD GRAPH:
 #Uses PCA representation of data matrix
@@ -223,11 +242,10 @@ sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs)
 sc.tl.umap(adata, min_dist=min_dist)
 sc.pl.umap(adata, color=labeled_genes, save='_' + str(sampleName) + '_' + str(n_neighbors) + 'neighbors_' + str(n_pcs) + 'PCs_umap_' + str(min_dist) + 'minDist_' + '_labeled_raw')
 ###THIS REQUIRES GENES IN LABELED_GENES TO BE IN HIGHLY VARIABLE LIST:
-labeled_genes_var = ['Oprm1', 'Slc17a6', 'Grik3', 'Gad1', 'Gad2', 'Slc4a4', 'Cpa6', 'Ntsr2', 'Pdgfra', 'Luzp2', 'C1qc', 'Flt1', 'Pcbp3', 'Dbi']
 sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, save='_' + str(sampleName) + '_nNeighbors' + str(n_neighbors) + '_nPCs' + str(n_pcs) + '_umap_filtered')
 
 ###CLUSTER DATA WITH LOUVAIN ALGORITHM:
-resolution = 0.5
+resolution = 0.9
 sc.tl.louvain(adata, resolution=resolution)
 labeled_genes.insert(0,'louvain')
 sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_louvain')
@@ -235,12 +253,12 @@ labeled_genes_var.insert(0,'louvain')
 sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_louvain_filtered')
 
 ###CLUSTER WITH LEIDEN ALGORITHM:
-resolution = 0.5
+resolution = 0.9
 iterations = -1 #only change this if you know what you're doing
 sc.tl.leiden(adata, resolution=resolution, n_iterations=iterations)
-#labeled_genes.insert(0,'leiden')
+labeled_genes.insert(0,'leiden')
 sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden')
-#labeled_genes_var.insert(0,'leiden')
+labeled_genes_var.insert(0,'leiden')
 sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution_clusters_labeled_leiden_filtered')
 sc.pl.umap(adata, color=['leiden'], use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_leiden_only')
 
@@ -309,10 +327,16 @@ table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_' + clu
 #make table with p-values included
 result = adata.uns['rank_genes_groups']
 groups = result['names'].dtype.names
-pval_table = pd.DataFrame(
-        {group + '_' + key[:2]: result[key][group]
-        for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
-pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_pval_table_' + cluster_method + '_clusters_' + str(n_genes) + 'genes_filtered_corrected.xlsx'), engine='openpyxl')
+if method != 'logreg':
+    pval_table = pd.DataFrame(
+            {group + '_' + key[:2]: result[key][group]
+            for group in groups for key in ['names', 'pvals']}).head(n_genes)
+    pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_pval_table_' + cluster_method + '_clusters_' + str(n_genes) + 'genes_filtered_corrected.xlsx'), engine='openpyxl')
+elif method=='logreg':
+        pval_table = pd.DataFrame(
+            {group + '_' + key[:2]: result[key][group]
+            for group in groups for key in ['names', 'scores']}).head(n_genes)
+        pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_coefs_' + cluster_method + '_clusters_' + str(n_genes) + 'genes_filtered_corrected.xlsx'), engine='openpyxl')
 
 
 ###DIFFERENTIAL EXPRRESSION OF GENES WITHIN CLUSTERS:
@@ -364,7 +388,7 @@ for i in list2compare:
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
+cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1 USING RAW DATA: 
 cat = pd.DataFrame()
 for i in list2compare:
@@ -379,7 +403,7 @@ for i in list2compare:
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
+cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
 
 ###CALCULATE GENES UPREGULATED IN GROUP 2 USING ONLY HIGHLY VARIABLE GENES:
 cat = pd.DataFrame()
@@ -394,7 +418,7 @@ for i in list2compare:
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
+cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1 USING ONLY HIGHLY VARIABLE GENES: 
 cat = pd.DataFrame()
 for i in list2compare:
@@ -409,35 +433,32 @@ for i in list2compare:
             {group + '_' + key[:1]: result[key][group]
             for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
     cat = pd.concat([cat, pval_table], axis=1)
-    cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
+cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
+
+
+###CONGRATULATIONS, THE PRIMARY ANALYSIS IS DONE. THIS IS A GOOD PLACE TO SAVE YOUR RESULTS:
+adata.write(results_file)
+
 
 ###OPTIONALLY RECLUSTER A SINGLE CLUSTER INTO FURTHER SUBTYPES
 cluster = 5
-sc.tl.leiden(adata, restrict_to=('leiden', ['5']), resolution=resolution, n_iterations=iterations)
+sc.tl.leiden(adata, restrict_to=('leiden', [str(cluster)]), resolution=resolution, n_iterations=iterations)
 labeled_genes_var.insert(0, 'leiden_R')
 labeled_genes.insert(0, 'leiden_R')
 sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden_recluster' + str(cluster))
 sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution_clusters_labeled_leiden_filtered_recluster' + str(cluster))
 
-###PSEUDOTIME ANALYSIS (STILL IN DEVELOPMENT, CAN SKIP THIS)
-adata.uns['iroot'] = np.flatnonzero(adata.obs['condition'] == 1)[0]
-sc.tl.diffmap(adata, n_comps=10)
-sc.tl.dpt(adata, n_branchings=1)
-sc.pl.dpt_groups_pseudotime(adata, save='_pseudotime_groups')
-#sc.pl.dpt_timeseries(adata, color_map=None, save='_pseudotime_timeSeries')
 
+###EXTRACT MARKER GENES FROM CLUSTER TABLE GENERATED ABOVE, GENERATE NEW UMAP PLOT USING THE DATA-DRIVEN MARKERS AS LABELED GENES:
 
-###PLOT AS HEATMAP:
 t = table.T
 markers = t[0].tolist()
-sc.pl.heatmap(adata, var_names=markers, groupby='louvain', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_louvain')
-sc.pl.heatmap(adata, var_names=markers, groupby='pairs', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_pairs')
-sc.pl.heatmap(adata, var_names=markers, groupby='leiden', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_leiden')
+markers.insert(0,cluster_method)
 
-markers = t[18].tolist()
-sc.pl.heatmap(adata, var_names=markers, groupby='leiden', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_leiden_labeledGenes')
-
-markers = ['Oprm1', 'Cmss1', 'Xylt1', "Camk2a", 'Grik3', 'Pcbp3', 'Grik1', 'Cux2', 'Rgs20', 'Luzp2', 'Hs6st3', 'Plp1', 'Pcbp3', 'Grm8', 'Inpp5d', 'Vcan', 'Arhgap6', 'Cpa6', 'Prex2', 'Flt1']
+###PLOT AS HEATMAP:
+sc.pl.heatmap(adata, var_names=markers, groupby='louvain', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_louvain')
+sc.pl.heatmap(adata, var_names=markers, groupby='pairs', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_pairs')
+sc.pl.heatmap(adata, var_names=markers, groupby='leiden', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_leiden')
 
 ###HEIRARCHICAL CLUSTERING:
 sc.tl.dendrogram(adata, groupby='louvain')
@@ -448,7 +469,6 @@ sc.tl.dendrogram(adata, groupby='leiden')
 sc.pl.dendrogram(adata, groupby='leiden', save='_leiden')
 
 markers_dend = ['Oprm1', 'Slc17a6', 'Xylt1', "Camk2a", 'Grik3', 'Pcbp3', 'Grik1', 'Rgs6', 'Fstl4', 'Luzp2', 'Hs6st3', 'Plp1', 'Pcbp3', 'Grm8', 'Inpp5d', 'Vcan', 'Arhgap6', 'Cpa6', 'Prex2', 'Flt1']
-
 
 
 ###PLOT CORRELATION MATRIX:
