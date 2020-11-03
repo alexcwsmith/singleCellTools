@@ -23,7 +23,8 @@ dt = str(datetime.today())
 date = dt.split(' ')[0]
 time = dt.split(' ')[1].split('.')[0]
 logname = 'scanpy_log_' + date + '_' + time + '.txt'
-%logstart -o eval(logname)
+print(logname)
+%logstart -o scanpy_log_2020_11_03.txt
 
 new = False #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read results_file.
 
