@@ -12,27 +12,22 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import scanpy.external as sce
-import scprep
 from skimage import io
-import os
 import matplotlib
 import openpyxl
 from datetime import datetime
 
-dt = str(datetime.today())
-date = dt.split(' ')[0]
-time = dt.split(' ')[1].split('.')[0]
-logname = 'scanpy_log_' + date + '_' + time + '.txt'
-print(logname)
-%logstart -o scanpy_log_2020_11_03.txt
 
-new = False #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read results_file.
+new = False #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read from results_file path.
 
-###SET DIRECTORY TO READ/WRITE DATA. SET THE SPYDER WORKING DIRECTORY TO THE SAME PATH (TOP RIGHT OF SPYDER).
+###SET DIRECTORY TO READ/WRITE DATA.
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
-BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanPy_V12/'
-sampleName = 'DP_OCvsSalineV12' #This is used for name result output files
+BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V6/'
+sampleName = 'DP_OCvsSalineV6' #This is used for name result output files
 batches = False #Set to True if you need to do batch correction (i.e. if samples were taken to core and sequenced at different times)
+import os
+os.chdir(BaseDirectory)
+%logstart -o scanpy_log.txt
 
 ###SET SCANPY SETTINGS:
 results_file = os.path.join(BaseDirectory, sampleName + 'scanpy_results.h5ad')  # the file that will store the analysis results
@@ -41,7 +36,7 @@ results_file_partial = os.path.join(BaseDirectory, sampleName + 'scanpy_adata_pr
 sc.settings.verbosity = 3  # verbosity: errors (0), warnings (1), info (2), hints (3)
 sc.settings.n_jobs=8 #use parallel processing when possible
 sc.logging.print_header()
-sc.set_figure_params(fontsize=14, dpi=80, dpi_save=600, format='svg')
+sc.set_figure_params(fontsize=14, dpi=80, dpi_save=300, format='png')
 
 ###LOAD DATA
 if not new:
@@ -440,6 +435,8 @@ cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated
 ###CONGRATULATIONS, THE PRIMARY ANALYSIS IS DONE. THIS IS A GOOD PLACE TO SAVE YOUR RESULTS:
 adata.write(results_file)
 
+#############################################################################
+###BELOW HERE ARE OPTIONAL ADDITIONAL ANALYSIS FUNCTIONS & SOME COOL PLOTTING.
 
 ###OPTIONALLY RECLUSTER A SINGLE CLUSTER INTO FURTHER SUBTYPES
 cluster = 5
