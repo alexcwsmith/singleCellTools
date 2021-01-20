@@ -40,8 +40,8 @@ def findCellsByGeneCoex(adata, gene1, gene2=None, g1thresh=0.6, g2thresh=0.6, ge
     
     Examples
     --------
-    result = findCellsByGeneCoex(adata, 'Sst', 'Gad1', 0.6, True, True)
-    result = findCellsByGeneCoex(adata, gene1='Slc17a6', gene2='Emx1', thresh=1.5, gene1up=False, gene2up=True)
+    >>> result = findCellsByGeneCoex(adata, 'Sst', 'Gad1', 0.6, 1.0, True, True, False)
+    >>> result = findCellsByGeneCoex(adata, gene1='Slc17a6', gene2='Emx1', g1thresh=1.5, g2thresh=0.6, gene1up=False, gene2up=True)
     """
     if not use_raw:
         mtx = pd.DataFrame(adata.X)
