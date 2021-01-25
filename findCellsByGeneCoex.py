@@ -94,7 +94,7 @@ def subsampleAdata(df, adata):
         The scanPy AnnData object results were originally extracted from.
     Example:
     >>> result = findCellsByGeneCoex(adata, 'Gad1', 'Sst', 0.6, gene1up=True, gene2up=True, use_raw=True)
-    >>> adata=subsampleAdata(df,adata)
+    >>> adata=subsampleAdata(result,adata)
 
     """
     return(adata[adata.obs.index.isin(df.index.tolist())])
