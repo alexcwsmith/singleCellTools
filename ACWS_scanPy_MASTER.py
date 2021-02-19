@@ -19,6 +19,7 @@ from datetime import datetime
 import sys
 sys.path.append('/d1/studies/singleCellTools')
 import ACWS_filterCells as fcx
+import countDEGs as cd
 
 new = True #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read from results_file path.
 
@@ -175,6 +176,19 @@ sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_f
 sc.pp.normalize_total(adata, target_sum=1e4, max_fraction=.05, exclude_highly_expressed=True)
 sc.pp.log1p(adata)
 
+###FILTER OUT CELLS THAT EXPRESS ABOVE THRESHOLD OF MULTIPLE MUTUALLY EXCLUSIVE GENES (DEFINED IN genePairs):
+thresh = 0.6
+genePairs = [('Tmem119', 'Pdgfra'), ('Tmem119', 'Olig2'), ('C1qa', 'Flt1'), 
+             ('Pdgfra', 'C1qa'), ('C1qa', 'Olig2'), ('C1qa', 'Gad1'),
+             ('Tmem119', 'Gad1'), ('Tmem119', 'Flt1'), ('Cx3cr1', 'Gad1')
+             ]    
+cat = pd.DataFrame()
+for gp in genePairs:
+    df = fcx.findCellsByGeneCoex(adata, gp[0], gp[1], thresh, thresh, True, True, False)
+    cat = pd.concat([cat, df], axis=0)
+    cat.drop_duplicates(inplace=True)
+    
+adata = fcx.filterCellsByCoex(adata, cat)
 
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
 ###YOU WILL LIKELY WANT TO PLAY WITH THESE VARIABLES AND SEE HOW IT AFFECTS RESULTS.
@@ -539,6 +553,9 @@ for i in list2compare:
     cat = pd.concat([cat, pval_table], axis=1)
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
 
+directory = os.getcwd()
+file='/d1/studies/scanPy/DST_MicrogliaDepletion/Analysis/Realigned_Mapped/DST_MGdepletion_Realigned_DiffExp_UpregulatedControl_t-test_leiden_0.5resolution_2000genes_filteredHVGs_adj.xlsx'
+cd.countDEGs(file, directory, n_genes=1000, pcutoff=.05, plot=True, save=True)
 
 ###CONGRATULATIONS, THE PRIMARY ANALYSIS IS DONE. THIS IS A GOOD PLACE TO SAVE YOUR RESULTS:
 adata.write(results_file)
