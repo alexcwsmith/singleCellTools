@@ -16,7 +16,9 @@ from skimage import io
 import matplotlib
 import openpyxl
 from datetime import datetime
-
+import sys
+sys.path.append('/d1/studies/singleCellTools')
+import ACWS_filterCells as fcx
 
 new = True #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read from results_file path.
 
@@ -30,8 +32,8 @@ os.chdir(BaseDirectory)
 %logstart -o scanpy_log.txt
 
 ###SET SCANPY SETTINGS:
-results_file = os.path.join(BaseDirectory, sampleName + 'scanpy_results.h5ad')  # the file that will store the analysis results
-results_file_partial = os.path.join(BaseDirectory, sampleName + 'scanpy_adata_prefiltering.h5ad')
+results_file = os.path.join(BaseDirectory, sampleName + '_scanpy_results.h5ad')  # the file that will store the analysis results
+results_file_partial = os.path.join(BaseDirectory, sampleName + '_scanpy_adata_prefiltering.h5ad')
 
 sc.settings.verbosity = 3  # verbosity: errors (0), warnings (1), info (2), hints (3)
 sc.settings.n_jobs=8 #use parallel processing when possible
@@ -115,7 +117,7 @@ sns.histplot(adata.obs["total_counts"], kde=False, ax=axs[0])
 sns.histplot(adata.obs["total_counts"][adata.obs["total_counts"] < 17500], kde=False, bins=40, ax=axs[1])
 sns.histplot(adata.obs["n_genes_by_counts"], kde=False, bins=60, ax=axs[2])
 sns.histplot(adata.obs["n_genes_by_counts"][adata.obs["n_genes_by_counts"] < 5500], kde=False, bins=60, ax=axs[3])
-plt.savefig('figures/' + sampleName + '_Counts_Genes_Mito_2.' + sc.settings.file_format_figs)
+plt.savefig('figures/' + sampleName + '_Counts_Genes_Mito.' + sc.settings.file_format_figs)
 
 ###CALCULATE % MITOCHONDRIAL GENES FOR EACH CELL, AND ADD TO ADATA.OBS:
 mito_genes = adata.var_names.str.startswith('mt-') 
@@ -128,6 +130,8 @@ sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
 sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) + '_mito_counts')
 sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_genes_counts')
 
+###STORE THE RAW ADATA STATE AS A VARIABLE TO BE ABLE TO LABEL GENES THAT WERE FILTERED OUT ETC:
+adata.raw = adata
 
 ###SAVE THE CURRENT ADATA STATE, CAN REVERT TO THIS WHILE TUNING PARAMETERS:
 adata.write(results_file_partial)
@@ -171,9 +175,6 @@ sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_f
 sc.pp.normalize_total(adata, target_sum=1e4, max_fraction=.05, exclude_highly_expressed=True)
 sc.pp.log1p(adata)
 
-###STORE THE RAW ADATA STATE AS A VARIABLE TO BE ABLE TO LABEL GENES THAT WERE FILTERED OUT ETC:
-adata.raw = adata
-
 
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
 ###YOU WILL LIKELY WANT TO PLAY WITH THESE VARIABLES AND SEE HOW IT AFFECTS RESULTS.
@@ -198,9 +199,9 @@ print(str(genes_max_percentile) + "% (" + str(round(genes_max_filt,2)) + ") of g
 
 
 
-min_mean = .01
+min_mean = .0125
 max_mean = 3.5
-min_disp = 0.2
+min_disp = 0.5
 if batches:
     sc.pp.highly_variable_genes(adata, min_mean=min_mean, max_mean=max_mean, min_disp=min_disp, batch_key='batch')
 elif not batches:
@@ -222,7 +223,7 @@ adata.var.to_excel(os.path.join(BaseDirectory, 'Adata_var_raw_preFiltering.xlsx'
 ###ACTUALLY DO THE FILTERING
 sc.pl.highly_variable_genes(adata, save='_' + str(sampleName) + '_highlyVariableGenes')
 adata = adata[:, adata.var['highly_variable']]
-sc.pp.regress_out(adata, ['n_counts', 'percent_mito'], n_jobs=12)
+sc.pp.regress_out(adata, ['n_counts'], n_jobs=12) #Removed 'percent_mito' as a covariate
 
 #Batch effect correction:
 if batches:
@@ -239,6 +240,8 @@ sc.pl.violin(adata, 'Oprm1', save='_' + str(sampleName) + '_Oprm1')
 ieg=['Fos', 'Arc', 'Npas4', 'Cux2', 'Egr1', 'Oprm1', 'Slc17a6']
 sc.pl.stacked_violin(adata, ieg, groupby='condition', num_categories=2, standard_scale='var', save='_' + str(sampleName) + '_IEGs_ssVar')
 sc.pl.stacked_violin(adata, ieg, groupby='condition', num_categories=2, standard_scale='obs', save='_' + str(sampleName) + '_IEGs_ssObs')
+sc.pl.stacked_violin(adata, ieg, groupby='condition', multi_panel=True, figsize=(6,3), num_categories=2, 
+                     stripplot=True, jitter=0.4, scale='count', yticklabels=True, save='_' + str(sampleName) + '_IEGs_stripplot')
 
 
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
@@ -292,7 +295,6 @@ labeled_genes_var.insert(0,'louvain')
 sc.pl.umap(adata, color=labeled_genes_var, color_map=color_map, vmax=vmax_filt, use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_louvain_filtered')
 sc.pl.umap(adata, color=['louvain'], use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_louvain_only')
 
-
 ###SEPARATE LOUVAIN CLUSTERS BY CONDITION & APPEND TO ADATA.OBS
 pairs = list(zip(adata.obs['condition'], adata.obs['louvain'].astype('int')))
 adata.obs['pairs'] = pairs
@@ -303,7 +305,6 @@ pairs_leid = list(zip(adata.obs['condition'], adata.obs['leiden'].astype('int'))
 adata.obs['pairs_leiden'] = pairs_leid
 adata.obs['leiden'] = adata.obs['leiden'].values.remove_unused_categories()
 
-
 #COUNT NUMBER OF CELLS IN EACH CLUSTER:
 counts = adata.obs['pairs'].value_counts().sort_index()
 print(counts)
@@ -312,6 +313,22 @@ print(counts)
 counts_leid = adata.obs['pairs_leiden'].value_counts().sort_index()
 print(counts_leid)
 
+###PLOT NUMBEROF CELLS IN EACH CLUSTER:
+counts_g1 = counts_leid[:int(len(counts_leid)/2)]
+counts_g2 = counts_leid[int(len(counts_leid)/2):]
+cg1df = pd.DataFrame(counts_g1)
+cg1df.reset_index(drop=True, inplace=True)
+cg2df = pd.DataFrame(counts_g2)
+cg2df.reset_index(drop=True, inplace=True)
+cat = pd.concat([cg1df,cg2df],axis=1, ignore_index=True)
+cat.columns=[g1n,g2n]
+cf = cat.plot.bar()
+cf.set_ylabel('# Cells')
+cf.set_xlabel('Leiden Cluster')
+cf.set_title('Number of cells per cluster')
+fig = cf.get_figure()
+fig.savefig('figures/CellsPercluster.' + sc.settings.file_format_figs)
+
 ###SPLIT DATA BY GROUP TO EXAMINE CLUSTERS FOR EACH GROUP INDIVIDUALLY:
 adata_g1 = adata[adata.obs['condition']==1]
 adata_g2 = adata[adata.obs['condition']==2]
@@ -319,6 +336,12 @@ sc.pl.umap(adata_g1, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_
 sc.pl.umap(adata_g2, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden_filtered_' + str(g2n))
 sc.pl.umap(adata_g1, color=['leiden'], use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden_only_' + str(g1n))
 sc.pl.umap(adata_g2, color=['leiden'], use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden_only' + str(g2n))
+
+###PLOT UMAP EMBEDDING DENSITY FOR EACH GROUP:
+sc.tl.embedding_density(adata, basis='umap', groupby='condition', key_added='umap_density')
+sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density', save='all')
+sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density_Group1', group=[1], save='Group1')
+sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density_Group2', group=[2], save='Group2')
 
 ###RUN STATS, NOTE 't-test' can be changed to 'wilcoxon':
 ###COMPARE EXPRESSION BY CONDITION (EQUIVALENT TO BULK-SEQ):
@@ -343,7 +366,7 @@ sc.pl.rank_genes_groups(adata, groupby='pairs_leiden', n_genes=25, sharey=False,
 
 
 ###CALCULATE CLUSTER STATISTICS USING HIGHLY VARIABLE GENES, MAKE TABLES OF MARKER GENES FOR EACH CLUSTER:
-method = 't-test' #t-test, wilcoxon, or logreg
+method = 'logreg' #t-test, wilcoxon, or logreg
 cluster_method = 'leiden'
 n_genes=1000 #set to adata.var.shape[0] to include all genes
 
@@ -369,17 +392,57 @@ elif method=='logreg':
             for group in groups for key in ['names', 'scores']}).head(n_genes)
         pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_coefs_' + cluster_method + '_clusters_' + str(n_genes) + 'genes_filtered_corrected.xlsx'), engine='openpyxl')
 
-###QUERY GENE ONTOLOGY DATABASE FOR ENRICHMENT:
-cluster = 5
-sigGenes = pval_table.loc[pval_table[str(cluster) + '_pv']<.05][str(cluster)+'_na'].tolist()
-enriched = sc.queries.enrich(sigGenes, org='mmusculus')
-if not os.path.exists(os.path.join(BaseDirectory, 'GOenrichment/')):
-    os.mkdir(os.path.join(BaseDirectory, 'GOenrichment/'))
-enriched.to_excel(os.path.join(BaseDirectory, 'GOenrichment/' + sampleName + '_GOenrichment_Cluster' + str(cluster) + '.xlsx'), engine = 'openpyxl')
-categories = enriched['source'].unique().tolist()
-for cat in categories:
-    df = enriched.loc[enriched['source']==cat]
-    df.to_excel(os.path.join(BaseDirectory, 'GOenrichment/' + sampleName + '_Enriched_' + cat + '_Cluster' + str(cluster) + '.xlsx'), engine='openpyxl')
+###EXTRACT MARKER GENES - MOST ENRICHED GENES PER CLUSTER:
+t = table.T
+markers = t[0].tolist()
+
+###PLOT MARKERS AS HEATMAP:
+sc.pl.heatmap(adata, var_names=markers, groupby='louvain', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_louvain')
+sc.pl.heatmap(adata, var_names=markers, groupby='pairs', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_pairs')
+sc.pl.heatmap(adata, var_names=markers, groupby='leiden', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_leiden')
+
+###GENERATE UMAP PLOT USING THE DATA-DRIVEN MARKERS AS LABELED GENES:
+markers.insert(0,cluster_method)
+vmin=None
+vmax=5
+color_map='plasma'
+sc.pl.umap(adata, color=markers, use_raw=False, color_map=color_map, vmin=vmin, vmax=vmax, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_' + cluster_method + '_filtered_MarkerGenes_' + str(method))
+
+###HEIRARCHICAL CLUSTERING:
+sc.tl.dendrogram(adata, groupby='louvain')
+sc.pl.dendrogram(adata, groupby='louvain', save='_louvain')
+sc.tl.dendrogram(adata, groupby='pairs_leiden')
+sc.pl.dendrogram(adata, groupby='pairs_leiden', save='_pairs_leiden')
+sc.tl.dendrogram(adata, groupby='leiden')
+sc.pl.dendrogram(adata, groupby='leiden', save='_leiden')
+
+###PLOT CORRELATION MATRIX:
+sc.pl.correlation_matrix(adata, groupby='louvain', save='_louvain')
+sc.pl.correlation_matrix(adata, groupby='leiden', save='_leiden')
+sc.pl.correlation_matrix(adata, groupby='pairs', save='_pairs')
+
+###PLOT PARTITION-BASED GRAPH ABSTRACTIONS
+sc.tl.paga(adata, groups='louvain')
+sc.pl.paga(adata, save='_paga_louvain')
+sc.tl.paga(adata, groups='leiden')
+sc.pl.paga(adata, save='_paga_leiden')
+sc.pl.paga_compare(adata, basis='umap', save='_paga_compare')
+
+###QUERY GENE ONTOLOGY DATABASE FOR ENRICHMENT (OPTIONAL, DOES NOT AFFECT DOWNSTREAM ANALYSIS):
+clus = adata.obs['leiden'].unique().tolist()
+for cluster in clus:
+    if method != 'logreg':
+        sigGenes = pval_table.loc[pval_table[str(cluster) + '_pv']<.05][str(cluster)+'_na'].tolist()
+    elif method=='logreg':
+        sigGenes = pval_table.loc[pval_table[str(cluster) + '_sc']>=.1][str(cluster)+'_na'].tolist()        
+    enriched = sc.queries.enrich(sigGenes, org='mmusculus')
+    if not os.path.exists(os.path.join(BaseDirectory, 'GOenrichment/')):
+        os.mkdir(os.path.join(BaseDirectory, 'GOenrichment/'))
+    enriched.to_excel(os.path.join(BaseDirectory, 'GOenrichment/' + sampleName + '_GOenrichment_Cluster' + str(cluster) + '.xlsx'), engine = 'openpyxl')
+    categories = enriched['source'].unique().tolist()
+    for cat in categories:
+        df = enriched.loc[enriched['source']==cat]
+        df.to_excel(os.path.join(BaseDirectory, 'GOenrichment/' + sampleName + '_Enriched_' + cat + '_Cluster' + str(cluster) + '.xlsx'), engine='openpyxl')
 
 
 ###DIFFERENTIAL EXPRRESSION OF GENES WITHIN CLUSTERS:
@@ -401,10 +464,8 @@ lz_leiden = list(zip(list1_leid, list2_leid))
 
 #IMPORTANT: INSPECT LZ_LOUVAIN AND LZ_LEID TO MAKE SURE THEY ARE CORRECTLY ALIGNED. 
 #EMPTY CLUSTERS IN ONE GROUP WILL CAUSE PROBLEMS.
-lz_louvain
-
-lz_leiden
-
+print(lz_louvain)
+print(lz_leiden)
 
 ###CALCULATE GENES UPREGULATED IN GROUP 2:
 method = 't-test' #t-test, wilcoxon, or logreg
@@ -483,7 +544,7 @@ cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated
 adata.write(results_file)
 
 #############################################################################
-###BELOW HERE ARE OPTIONAL ADDITIONAL ANALYSIS FUNCTIONS & SOME COOL PLOTTING.
+###BELOW HERE ARE OPTIONAL ADDITIONAL ANALYSIS & PLOTTING FUNCTIONS.
 
 ###OPTIONALLY RECLUSTER A SINGLE CLUSTER INTO FURTHER SUBTYPES
 cluster = 5
@@ -493,61 +554,6 @@ labeled_genes.insert(0, 'leiden_R')
 sc.pl.umap(adata, color=labeled_genes, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution' + '_clusters_labeled_leiden_recluster' + str(cluster))
 sc.pl.umap(adata, color=labeled_genes_var, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution_clusters_labeled_leiden_filtered_recluster' + str(cluster))
 
-
-###EXTRACT MARKER GENES FROM CLUSTER TABLE GENERATED ABOVE:
-t = table.T
-markers = t[0].tolist()
-markers.insert(0,cluster_method)
-
-###GENERATE NEW UMAP PLOT USING THE DATA-DRIVEN MARKERS AS LABELED GENES
-vmin=None
-vmax=5
-color_map='plasma'
-sc.pl.umap(adata, color=markers, use_raw=False, color_map=color_map, vmin=vmin, vmax=vmax, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_' + cluster_method + '_filtered_MarkerGenes' + str(method))
-
-
-###PLOT AS HEATMAP:
-markers.remove(cluster_methood)
-sc.pl.heatmap(adata, var_names=markers, groupby='louvain', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_louvain')
-sc.pl.heatmap(adata, var_names=markers, groupby='pairs', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_pairs')
-sc.pl.heatmap(adata, var_names=markers, groupby='leiden', standard_scale='var', show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_leiden')
-
-###HEIRARCHICAL CLUSTERING:
-sc.tl.dendrogram(adata, groupby='louvain')
-sc.pl.dendrogram(adata, groupby='louvain', save='_louvain')
-sc.tl.dendrogram(adata, groupby='pairs')
-sc.pl.dendrogram(adata, groupby='pairs', save='_pairs')
-sc.tl.dendrogram(adata, groupby='leiden')
-sc.pl.dendrogram(adata, groupby='leiden', save='_leiden')
-
-markers_dend = ['Oprm1', 'Slc17a6', 'Xylt1', "Camk2a", 'Grik3', 'Pcbp3', 'Grik1', 'Rgs6', 'Fstl4', 'Luzp2', 'Hs6st3', 'Plp1', 'Pcbp3', 'Grm8', 'Inpp5d', 'Vcan', 'Arhgap6', 'Cpa6', 'Prex2', 'Flt1']
-
-
-###PLOT CORRELATION MATRIX:
-sc.pl.correlation_matrix(adata, groupby='louvain', save='_louvain')
-sc.pl.correlation_matrix(adata, groupby='leiden', save='_leiden')
-sc.pl.correlation_matrix(adata, groupby='pairs', save='_pairs')
-sc.pl.correlation_matrix(adata, groupby='condition', save='_condition')
-
-
-###PLOT EMBEDDING DENSITY:
-sc.tl.embedding_density(adata, basis='umap', groupby='condition', key_added='umap_density')
-sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density', save='all')
-sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density_Group1', group=[1], save='Group1')
-sc.pl.embedding_density(adata, basis='umap', key='umap_density', title='UMAP_Density_Group2', group=[2], save='Group2')
-
-
-###PLOT PARTITION-BASED GRAPH ABSTRACTIONS
-sc.tl.paga(adata, groups='louvain')
-sc.pl.paga(adata, save='_paga_louvain')
-sc.tl.paga(adata, groups='leiden')
-sc.pl.paga(adata, save='_paga_leiden')
-sc.pl.paga_compare(adata, basis='umap', save='_paga_compare')
-
-sc.tl.paga(adata, groups='pairs')
-sc.pl.paga(adata, single_component=True, save='_paga_pairs_louvain')
-sc.tl.paga(adata, groups='pairs_leiden')
-sc.pl.paga(adata, single_component=True, save='_paga_pairs_leiden')
 
 ###PLOT DOT PLOTS:
 adatac5 = adata[adata.obs['leiden']=='5']
