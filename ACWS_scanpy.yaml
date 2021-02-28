@@ -1,0 +1,29 @@
+name: scanpy
+channels:
+  - conda-forge
+  - anaconda
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.6
+  - scanpy=1.7
+  - spyder
+  - scikit-image
+  - openpyxl
+  - xlrd
+  - tqdm
+  - python-igraph
+  - louvain
+  - leidenalg
+  - scvelo
+  - scprep
+  - dca
+  - tensorflow=2
+  - lxml
+  - fa2
+  - anaconda
+  - umap-learn=0.4
+  - scikit-misc
+  - scanorama
+  - gprofiler-official
+
