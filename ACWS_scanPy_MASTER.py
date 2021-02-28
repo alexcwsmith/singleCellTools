@@ -7,28 +7,28 @@ This is the main script for processing scRNA-Seq Data through ScanPy.
 
 @author: smith
 """
-
+import os
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import scanpy.external as sce
 from skimage import io
 import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
 import openpyxl
 from datetime import datetime
 import sys
-sys.path.append('/d1/studies/singleCellTools')
+sys.path.append('/d1/studies/singleCellTools') #alternatively you can open a terminal with the scanpy environment, and do 'conda develop /d1/studies/singleCellTools/ to permanently add to path
 import ACWS_filterCells as fcx
-import countDEGs as cd
 
 new = True #if new analysis, set to True read adata from 10X mtx or cache). If re-analyzing data, set to false and read from results_file path.
 
 ###SET DIRECTORY TO READ/WRITE DATA.
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
-BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp_V6/'
-sampleName = 'DP_OCvsSalineV6' #This is used for name result output files
+BaseDirectory = '/d1/studies/cellranger/ACWS_DP/scanpy_DiffExp/'
+sampleName = 'DP_OCvsSaline' #This is used for name result output files
 batches = False #Set to True if you need to do batch correction (i.e. if samples were taken to core and sequenced at different times)
-import os
 os.chdir(BaseDirectory)
 %logstart -o scanpy_log.txt
 
@@ -105,7 +105,6 @@ if batches:
     adata.obs['batch']=batches_combined['batch'].values
     adata.obs['batch']=adata.obs['batch'].astype('category')
 
-
 ###EXPLORE DATA, PLOT HIGHEST EXPRESSING GENES, FILTER LOW EXPRESSION GENES & CELLS:
 sc.pl.highest_expr_genes(adata, n_top=50, save='_' + str(sampleName) + '_highestExpressingGenes')
 sc.pp.filter_cells(adata, min_genes=300)
@@ -139,7 +138,6 @@ adata.write(results_file_partial)
 ###IF YOU LATER WANT TO REVERT TO THE PRE-FILTERED RESULTS FILE USE:
 adata = sc.read(results_file_partial)
 
-
 ###THE BELOW CALCULATIONS MAY HELP YOU DETERMINE CRITERIA FOR FILTERING BASED ON MAX GENES EXPRESSED and % mt-DNA.
 ###THE DEFAULTS HERE WORK WELL FOR MY DATA, BUT YOU ARE HIGHLY ENCOURAGED TO TEST DIFFERENT NUMBERS.
 
@@ -172,6 +170,9 @@ adata = adata[adata.obs['percent_mito'] < max_mito, :]
 sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) + '_filtered_mito_counts', title='Filtered < ' + str(max_genes) +  ' total counts')
 sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_filtered_genes_counts', title='Filtered < ' + str(max_mito) + ' mito')
 
+###FILTER GENES AGAIN, AS THIS MAY HAVE CHANGED AFTER FILTERING CELLS
+sc.pp.filter_genes(adata, min_cells=3)
+
 ###NORMALIZE & LOG TRANSFORM
 sc.pp.normalize_total(adata, target_sum=1e4, max_fraction=.05, exclude_highly_expressed=True)
 sc.pp.log1p(adata)
@@ -181,13 +182,13 @@ thresh = 0.6
 genePairs = [('Tmem119', 'Pdgfra'), ('Tmem119', 'Olig2'), ('C1qa', 'Flt1'), 
              ('Pdgfra', 'C1qa'), ('C1qa', 'Olig2'), ('C1qa', 'Gad1'),
              ('Tmem119', 'Gad1'), ('Tmem119', 'Flt1'), ('Cx3cr1', 'Gad1')
-             ]    
+             ] 
 cat = pd.DataFrame()
 for gp in genePairs:
     df = fcx.findCellsByGeneCoex(adata, gp[0], gp[1], thresh, thresh, True, True, False)
     cat = pd.concat([cat, df], axis=0)
     cat.drop_duplicates(inplace=True)
-    
+print(str(cat.shape[0]) + " cells to drop")
 adata = fcx.filterCellsByCoex(adata, cat)
 
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
@@ -210,8 +211,6 @@ genes_max_percentile = 99
 genes_max_perc = np.percentile(adata.var.means, genes_max_percentile)
 genes_max_filt = round(adata.var.shape[0]*(genes_max_percentile/100))
 print(str(genes_max_percentile) + "% (" + str(round(genes_max_filt,2)) + ") of genes have mean lower than " + str(genes_max_perc))
-
-
 
 min_mean = .0125
 max_mean = 3.5
@@ -257,11 +256,9 @@ sc.pl.stacked_violin(adata, ieg, groupby='condition', num_categories=2, standard
 sc.pl.stacked_violin(adata, ieg, groupby='condition', multi_panel=True, figsize=(6,3), num_categories=2, 
                      stripplot=True, jitter=0.4, scale='count', yticklabels=True, save='_' + str(sampleName) + '_IEGs_stripplot')
 
-
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
 labeled_genes_var = ['Oprm1', 'Slc17a6', 'Grik3', 'Gad1', 'Gad2', 'Slc4a4', 'Cpa6', 'Ntsr2', 'Pdgfra', 'Luzp2', 'C1qc', 'Flt1', 'Pcbp3', 'Dbi']
 labeled_genes = ['Oprm1', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
-
 
 #RUN PCA
 n_comps = 30
@@ -529,7 +526,7 @@ for i in list2compare:
     if cluster_method=='leiden':
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), use_raw=False, n_genes=n_genes, method=method)
     elif cluster_method=='louvain':
-        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=n_genes, method=method)        
+        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=n_genes, use_raw=False, method=method)        
     result = adata.uns['rank_genes_groups']
     groups = result['names'].dtype.names
     pval_table = pd.DataFrame(
@@ -543,7 +540,7 @@ for i in list2compare:
     if cluster_method=='leiden':
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), use_raw=False, n_genes=n_genes, method=method)
     elif cluster_method=='louvain':
-        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, method=method)
+        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, use_raw=False, method=method)
     #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
     result = adata.uns['rank_genes_groups']
     groups = result['names'].dtype.names
@@ -553,9 +550,11 @@ for i in list2compare:
     cat = pd.concat([cat, pval_table], axis=1)
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
 
-directory = os.getcwd()
-file='/d1/studies/scanPy/DST_MicrogliaDepletion/Analysis/Realigned_Mapped/DST_MGdepletion_Realigned_DiffExp_UpregulatedControl_t-test_leiden_0.5resolution_2000genes_filteredHVGs_adj.xlsx'
-cd.countDEGs(file, directory, n_genes=1000, pcutoff=.05, plot=True, save=True)
+###COUNT DEGS
+#This currently reads an excel file that has been written with results, so change the file name below to your own.
+#In the future this will automatically be calculated for each comparison as the DE is run.
+file = os.path.join(BaseDirectory, 'DST_MGdepletion_Realigned_DiffExp_UpregulatedControl_t-test_leiden_0.5resolution_2000genes_filteredHVGs_adj.xlsx'
+fcx.countDEGs(file, BaseDirectory, n_genes=n_genes, pcutoff=.05, plot=True, save=True)
 
 ###CONGRATULATIONS, THE PRIMARY ANALYSIS IS DONE. THIS IS A GOOD PLACE TO SAVE YOUR RESULTS:
 adata.write(results_file)

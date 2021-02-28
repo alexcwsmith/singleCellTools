@@ -25,22 +25,22 @@ def downloadFASTQs():
     DLpaths = []
     for sample in sampleNames:
         url = os.path.join(directory, sample)
+        sample = sample.strip('.fastq.gz')
         DLpaths.append(url)
-        if not os.path.exists(os.path.join(saveDir, sample)):
-            os.mkdir(os.path.join(saveDir,sample))
     
     for path in DLpaths:
-        name = path.split('/')[-2]
-        r = requests.get(path)
-        soup = BeautifulSoup(r.text)
-        table = soup.findAll('table')[0]
-        links = table.findAll('a')
-        for link in links:
-            if link.text.startswith(prefix):
-                l = link.text
-                res = requests.get(os.path.join(path, l), allow_redirects=True)    
-                urllib.request.urlretrieve(os.path.join(path, l), filename=os.path.join(saveDir, name + '/' + link.text))
+        name = path.split('/')[-1]
+        urllib.request.urlretrieve(path, filename=os.path.join(saveDir, name))
 
     
 if __name__ == '__main__':
     downloadFASTQs()
+
+
+
+
+
+
+
+
+

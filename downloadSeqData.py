@@ -10,7 +10,7 @@ Script to download 10X Genomics sequencing data off of Minerva @ Mount Sinai
 
 """
 
-import urllib
+import urllib.request
 import os
 
 def downloadSeqData():
@@ -30,8 +30,8 @@ def downloadSeqData():
     for file in dlist:
         urllib.request.urlretrieve(os.path.join(url2, file), filename=os.path.join(p, sampleName + '_' + file))
     
-
-downloadSeqData()
+if __name__=='__main__':
+    downloadSeqData()
 
 
 

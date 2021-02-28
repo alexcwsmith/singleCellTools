@@ -5,6 +5,7 @@ Created on Fri Jan 15 16:01:27 2021
 
 @author: smith
 """
+import os
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -53,7 +54,7 @@ def findCellsByGeneCoex(adata, gene1, gene2=None, g1thresh=0.6, g2thresh=0.6, ge
             mtx.index = adata.obs.index
     elif type(adata.X)==np.ndarray:
         if use_raw:
-            mtx = pd.DataFrame(adata.raw.X)
+            mtx = pd.DataFrame(adata.raw.X.toarray())
             mtx.columns=adata.raw.var_names
             mtx.index=adata.raw.obs_names            
         elif not use_raw:
@@ -123,6 +124,56 @@ def subsampleData(adata, df):
     """
     return(adata[adata.obs.index.isin(df.index.tolist())])
     
+def countDEGs(file, directory, n_genes=1000, pcutoff=.05, plot=True, save=False):
+    """Count number of differentially expressed genes in scanpy result file.
+    
+    Parameters
+    ----------
+    file : string
+        Path to saved .xlsx or .csv file containing differential expression data.
+    directory : string
+        Directory to save results.
+    n_genes : int, (optional, default 1000)
+        Number of genes used in original data analysis.
+    pcutoff : float (optional, default .05)
+        Alpha value for significance.
+    save : bool (optional, default False)
+        Whether to save or only return result.
+        
+    Returns
+    -------
+    Pandas DataFrame with # of DEGs for each cluster.
+    """
+    fname, ext = os.path.splitext(os.path.basename(file))
+    if file.endswith('.xlsx'):
+        df = pd.read_excel(file, index_col=0, engine='openpyxl')
+        df = df[:n_genes]
+    elif file.endswith('.csv'):
+        df = pd.read_csv(file, index_col=0)
+        df = df[:n_genes]
+    clusters=[]
+    degs=[]
+    for col in df.columns:
+        if col.endswith('_p'):
+            count = (df[col]<pcutoff).value_counts()
+            try:
+                count = count.loc[count.index==True].values[0]
+            except IndexError:
+                count=0
+            clu = int(col.strip('_p').split(' ')[-1].strip(')'))
+            clusters.append(clu)
+            degs.append(count)
+    lz = list(zip(clusters,degs))
+    res = pd.DataFrame(lz)
+    res.columns=['Cluster', 'DEGs']
+    res.set_index('Cluster', inplace=True, drop=True)
+    if plot:
+        fig = res.plot(kind='bar', grid=False)
+        ax = fig.get_figure()
+        ax.savefig(os.path.join(directory, 'figures/' + fname + '_DEG_Counts.png'))
+    if save:
+        res.to_excel(os.path.join(directory, fname + '_DEG_Counts.xlsx'))
+    return res
 
 def meanMito():
     meanMito = adata.obs['percent_mito'].mean()
