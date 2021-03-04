@@ -13,7 +13,6 @@ import pandas as pd
 import scanpy as sc
 import scanpy.external as sce
 from skimage import io
-import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 import openpyxl
