@@ -124,7 +124,7 @@ def subsampleData(adata, df):
     """
     return(adata[adata.obs.index.isin(df.index.tolist())])
     
-def countDEGs(file, directory, n_genes=1000, pcutoff=.05, plot=True, save=False):
+def countDEGs(file, directory, n_genes=1000, pcutoff=.05, plot=True, save=False, imageType='.png'):
     """Count number of differentially expressed genes in scanpy result file.
     
     Parameters
@@ -170,10 +170,71 @@ def countDEGs(file, directory, n_genes=1000, pcutoff=.05, plot=True, save=False)
     if plot:
         fig = res.plot(kind='bar', grid=False)
         ax = fig.get_figure()
-        ax.savefig(os.path.join(directory, 'figures/' + fname + '_DEG_Counts.png'))
+        ax.savefig(os.path.join(directory, 'figures/' + fname + '_DEG_Counts'+imageType))
     if save:
         res.to_excel(os.path.join(directory, fname + '_DEG_Counts.xlsx'))
     return res
+
+def mergeGroupsCountDEGs(file1, file2, directory, n_genes=1000, pcutoff=.05, plot=True, save=False, imageType='.png'):
+    """Count number of differentially expressed genes in scanpy result file.
+    
+    Parameters
+    ----------
+    file : string
+        Path to first saved .xlsx or .csv file containing differential expression data.
+    file2 : string
+        Path to second .xlsx or .csv file with differential expression data.
+    directory : string
+        Directory to save results.
+    n_genes : int, (optional, default 1000)
+        Number of genes used in original data analysis.
+    pcutoff : float (optional, default .05)
+        Alpha value for significance.
+    save : bool (optional, default False)
+        Whether to save or only return result.
+        
+    Returns
+    -------
+    Pandas DataFrame with # of DEGs for each cluster.
+    """
+    cat = pd.DataFrame()
+    comparisons=[]
+    for file in [file1, file2]:
+        fname, ext = os.path.splitext(os.path.basename(file))
+        comparison = fname.split('DiffExp_')[-1].split('_')[0]
+        groupid = comparison.split('Upregulated')[-1]
+        comparisons.append(comparison)
+        if file.endswith('.xlsx'):
+            df = pd.read_excel(file, index_col=0, engine='openpyxl')
+            df = df[:n_genes]
+        elif file.endswith('.csv'):
+            df = pd.read_csv(file, index_col=0)
+            df = df[:n_genes]
+        clusters=[]
+        degs=[]
+        for col in df.columns:
+            if col.endswith('_p'):
+                count = (df[col]<pcutoff).value_counts()
+                try:
+                    count = count.loc[count.index==True].values[0]
+                except IndexError:
+                    count=0
+                clu = int(col.strip('_p').split(' ')[-1].strip(')'))
+                clusters.append(clu)
+                degs.append(count)
+        lz = list(zip(clusters,degs))
+        cat["Up " + groupid]=degs
+    if plot:
+        fig = cat.plot(kind='bar', grid=False)
+        ax = fig.get_figure()
+        ax.savefig(os.path.join(directory, 'figures/' + 'Combined_' + comparisons[0] + '_' + comparisons[1] + '_Ngenes'+str(n_genes)+'_DEG_Counts'+imageType))
+    if save:
+        cat.to_excel(os.path.join(directory, 'Combined_' + comparisons[0] + '_' + comparisons[1] + '_Ngenes'+str(n_genes)+'_DEG_Counts.xlsx'))
+    return cat
+
+
+
+
 
 def meanMito():
     meanMito = adata.obs['percent_mito'].mean()
