@@ -35,7 +35,8 @@ os.chdir(BaseDirectory)
 %logstart -o scanpy_log.txt
 
 ###SET SCANPY SETTINGS:
-results_file = os.path.join(BaseDirectory, sampleName + '_scanpy_results.h5ad')  # the file that will store the analysis results
+results_file='Results_File'
+#results_file = os.path.join(BaseDirectory, sampleName + '_scanpy_results.h5ad')  # the file that will store the analysis results
 results_file_partial = os.path.join(BaseDirectory, sampleName + '_scanpy_adata_preHVGselection.h5ad')
 
 sc.settings.verbosity=3  # verbosity: errors (0), warnings (1), info (2), hints (3)
