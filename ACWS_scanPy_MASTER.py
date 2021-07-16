@@ -295,8 +295,6 @@ sc.pl.stacked_violin(adata, ieg, groupby='condition', multi_panel=True, figsize=
 sc.pl.dotplot(adata, ieg, groupby='condition', num_categories=2, standard_scale='var', cmap=color_map, save='IEGS')
 
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
-#labeled_genes_var = ['Oprm1', 'Slc17a6', 'Grik3', 'Gad1', 'Gad2', 'Slc4a4', 'Cpa6', 'Ntsr2', 'Pdgfra', 'Luzp2', 'C1qc', 'Flt1', 'Pcbp3', 'Dbi']
-#labeled_genes = ['Oprm1', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
 labeled_genes_var = ['Fos', 'Rorb', 'Grik3', 'Camk2g', 'Gad1', 'Gad2', 'Nos1', 'Ntsr2', 'Pdgfra', 'Tmem119', 'C1qc', 'Flt1', 'Dbi']
 labeled_genes = ['Fos', 'Oprm1', 'Slc17a6', 'Slc17a7', 'Grik3', 'Camk2a', 'Camk2b', 'Ppp2ca', 'Gad1', 'Gad2', 'Sst', 'Pvalb', 'Nos1', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
 
