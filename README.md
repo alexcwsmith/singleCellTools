@@ -16,3 +16,16 @@ leave the scripts here.
 * countDEGs.py contains a function for counting # of differentially expressed genes in each cluster.
 
 * downloadSeqData.py & downloadFASTQs.py are for retrieving data from Mount Sinai's Minerva HPC.
+
+## Cellranger tools:
+
+* cellrangerCount.sh - shell script for running cellranger count. Users will need to make their own copy, this file is read-only for everyone but root.
+
+* cellrangerAggr.sh - shell script for running cellranger aggr. Again, make a copy to edit.
+
+## CellBender tools:
+
+* cellbender_conda_env.yml - conda environment for running cellbender, a package for de-noising data by removing ambient RNA that I find quite useful.
+  Details on cellbender are here: https://github.com/broadinstitute/CellBender
+
+* cellbender.sh - shell script for running cellbender (inside activated conda env above).
