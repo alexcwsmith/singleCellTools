@@ -216,7 +216,7 @@ print(str(cat.shape[0]) + " cells to drop")
 
 adata = fcx.filterCellsByCoex(adata, cat)
 
-#Update adata.raw with QC-filtered dataset before HVG filtering
+#Update adata.raw with filtered dataset before HVG selection
 adata.raw=adata
 
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
@@ -313,14 +313,13 @@ sc.tl.pca(adata, n_comps=n_comps, svd_solver='arpack')
 sc.pl.pca(adata, color=labeled_genes, color_map=color_map, save='_' + str(sampleName) + '_' + str(n_comps) + 'comps_PCA_labeled')
 sc.pl.pca_variance_ratio(adata, log=True, save='_' + str(n_comps) + '_ncomps_PCA_VarianceRatio_log')
 sc.pl.pca_variance_ratio(adata, log=False, save='_' + str(n_comps) + '_ncomps_PCA_VarianceRatio_linear')
-###LOOK AT VARIANCE_RATIO OUTPUT FILE BEFORE PROCEEDING TO NEXT STEP
+###LOOK AT VARIANCE_RATIO OUTPUT FILE AND CHOOSE NUMBER OF PCs TO LEFT OF APEX BEFORE PROCEEDING TO NEXT STEP
 n_pcs = 15
 sc.pl.pca_overview(adata, save='_' + str(sampleName) + '_' + str(n_pcs) + 'PCs_PCA_Overview')
 sc.pl.pca_loadings(adata, components=list(np.arange(1, n_pcs+1)), save='_' + str(sampleName) + '_' + str(n_pcs) + '_PCs')
 
 #COMPUTING NEIGHBORHOOD GRAPH:
 #Uses PCA representation of data matrix
-###LOOK AT SAVED FIGURE W/ SUFFIX _PCA_VarianceRatio AND CHOOSE NUMBER OF PCs BEFORE APEX (HERE ~20)
 n_neighbors = 25
 min_dist = .1
 sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs)
@@ -375,21 +374,58 @@ counts = adata.obs['pairs_'+cluster_method].value_counts().sort_index()
 print(counts)
 
 if not singleSample:
-    ###PLOT NUMBEROF CELLS IN EACH CLUSTER:
     counts_g1 = counts[:int(len(counts)/2)]
     counts_g2 = counts[int(len(counts)/2):]
-    cg1df = pd.DataFrame(counts_g1)
-    cg1df.reset_index(drop=True, inplace=True)
-    cg2df = pd.DataFrame(counts_g2)
-    cg2df.reset_index(drop=True, inplace=True)
+    
+    #CHECK IF ANY CLUSTERS EXIST IN ONE GROUP BUT NOT THE OTHER, INSERT 0 IF SO:
+    if counts_g1.shape != counts_g2.shape:
+        print("Number of clusters not equal!")
+        counts_g1df=pd.DataFrame(counts_g1)
+        counts_g1df.columns=['cellCounts']
+        counts_g2df=pd.DataFrame(counts_g2)
+        counts_g2df.columns=['cellCounts']
+        counts_g1df['condition'], counts_g1df['cluster']=counts_g1df.index.str
+        g1_clusters = counts_g1df['cluster'].tolist()
+        counts_g2df['condition'], counts_g2df['cluster']=counts_g2df.index.str
+        g2_clusters = counts_g2df['cluster'].tolist()
+        numClusters = max(counts_g1df.shape[0],counts_g2df.shape[0])
+        if counts_g1.shape[0]<counts_g2.shape[0]:
+            for i in list(range(numClusters)):
+                if i not in g1_clusters:
+                    print("Cluster " + str(i) + " missing from " + g1n)
+                    g1Counts_fixed = counts_g1df['cellCounts'].tolist()
+                    g1Counts_fixed.insert(i, 0)
+            cg1df=pd.DataFrame(g1Counts_fixed)
+            cg1df.columns=[g1n+'_count']
+            cg2df=pd.DataFrame(counts_g2).reset_index(drop=True)
+            cg2df.columns=[g2n+'_count']
+        elif counts_g2.shape[0]<counts_g1.shape[0]:
+            for i in list(range(numClusters)):
+                if i not in g2_clusters:
+                    print("Cluster " + str(i) + " missing from " + g2n)
+                    g2Counts_fixed = counts_g2df['cellCounts'].tolist()
+                    g2Counts_fixed.insert(i, 0)
+            cg2df=pd.DataFrame(g2Counts_fixed)
+            cg2df.columns=[g2n+'_count']
+            cg1df=pd.DataFrame(counts_g1).reset_index(drop=True)
+            cg1df.columns=[g1n+'_count']
+    else:
+        cg1df = pd.DataFrame(counts_g1)
+        cg1df.reset_index(drop=True, inplace=True)
+        cg2df = pd.DataFrame(counts_g2)
+        cg2df.reset_index(drop=True, inplace=True)
+       
+    
+    ###PLOT NUMBEROF CELLS IN EACH CLUSTER:
     cat = pd.concat([cg1df,cg2df],axis=1, ignore_index=True)
     cat.columns=[g1n,g2n]
-    cf = cat.plot.bar()
+    cf = cat.plot.bar(grid=False)
     cf.set_ylabel('# Cells')
     cf.set_xlabel(cluster_method + 'cluster')
     cf.set_title('Number of cells per cluster')
     fig = cf.get_figure()
     fig.savefig('figures/CellsPercluster_'+cluster_method+'.' + sc.settings.file_format_figs)
+    
     
     ###SPLIT DATA BY GROUP TO EXAMINE CLUSTERS FOR EACH GROUP INDIVIDUALLY:
     adata_g1 = adata[adata.obs['condition']==1]
@@ -504,6 +540,7 @@ pickedGenes=[
     ]
 
 sc.pl.heatmap(adata, var_names=pickedGenes, groupby='leiden', use_raw=False, standard_scale='var', cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_HandPicked')
+sc.pl.stacked_violin(adata, var_names=pickedGenes, groupby=cluster_method, standard_scale='var', cmap=color_map, use_raw=False, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_'+cluster_method+'_MarkerGenes_HandPicked')
 
 #Picked genes for logreg:
 pickedGenes_logreg=[
@@ -514,6 +551,7 @@ pickedGenes_logreg=[
     ]
 
 sc.pl.heatmap(adata, var_names=pickedGenes_logreg, groupby='leiden', use_raw=False, standard_scale='var', cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_HandPicked')
+sc.pl.stacked_violin(adata, var_names=pickedGenes_logreg, groupby=cluster_method, standard_scale='var', cmap=color_map, use_raw=False, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_'+cluster_method+'_MarkerGenes_HandPicked')
 
 ###HEIRARCHICAL CLUSTERING:
 sc.tl.dendrogram(adata, n_pcs=n_pcs, groupby=cluster_method)
