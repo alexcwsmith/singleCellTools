@@ -222,7 +222,6 @@ def mergeGroupsCountDEGs(file1, file2, directory, n_genes=1000, pcutoff=.05, plo
                 clu = int(col.strip('_p').split(' ')[-1].strip(')'))
                 clusters.append(clu)
                 degs.append(count)
-        lz = list(zip(clusters,degs))
         cat["Up " + groupid]=degs
     if plot:
         fig = cat.plot(kind='bar', grid=False)
@@ -233,10 +232,7 @@ def mergeGroupsCountDEGs(file1, file2, directory, n_genes=1000, pcutoff=.05, plo
     return cat
 
 
-
-
-
-def meanMito():
+def meanMito(adata):
     meanMito = adata.obs['percent_mito'].mean()
     return(meanMito)
     
