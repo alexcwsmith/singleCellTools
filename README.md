@@ -1,6 +1,7 @@
 # singleCellTools
 Tools for analysis of single-cell sequencing data, by Alex Smith in the lab of Paul Kenny @ Mount Sinai.
 
+[![DOI](https://zenodo.org/badge/273064116.svg)](https://zenodo.org/badge/latestdoi/273064116)
 
 #Overview:
 
