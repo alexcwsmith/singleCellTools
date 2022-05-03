@@ -119,7 +119,7 @@ def subsampleData(adata, df):
         
     Example:
     >>> result = findCellsByGeneCoex(adata, 'Gad1', 'Sst', 0.6, gene1up=True, gene2up=True, use_raw=True)
-    >>> adata=subsampleAdata(result,adata)
+    >>> adata=subsampleAdata(adata, result)
 
     """
     return(adata[adata.obs.index.isin(df.index.tolist())])
@@ -219,7 +219,10 @@ def mergeGroupsCountDEGs(file1, file2, directory, n_genes=1000, pcutoff=.05, plo
                     count = count.loc[count.index==True].values[0]
                 except IndexError:
                     count=0
-                clu = int(col.strip('_p').split(' ')[-1].strip(')'))
+                try:
+                    clu = int(col.strip('_p').split(' ')[-1].strip(')'))
+                except ValueError:
+                    clu =  int(col.strip('_p').split(' ')[-1].strip(')')[1])
                 clusters.append(clu)
                 degs.append(count)
         cat["Up " + groupid]=degs
