@@ -54,7 +54,7 @@ def findCellsByGeneCoex(adata, gene1, gene2=None, g1thresh=0.6, g2thresh=0.6, ge
             mtx.index = adata.obs.index
     elif type(adata.X)==np.ndarray:
         if use_raw:
-            mtx = pd.DataFrame(adata.raw.X.toarray())
+            mtx = pd.DataFrame(adata.raw.X)
             mtx.columns=adata.raw.var_names
             mtx.index=adata.raw.obs_names            
         elif not use_raw:
