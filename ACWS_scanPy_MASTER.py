@@ -8,10 +8,11 @@ This is the main script for processing scRNA-Seq Data through ScanPy.
 @author: smith
 """
 import os
-import numpy as np
-import pandas as pd
+os.chdir('/d1/software/scanpy/')
 import scanpy as sc
 import scanpy.external as sce
+import numpy as np
+import pandas as pd
 from skimage import io
 import matplotlib
 import matplotlib.pyplot as plt
@@ -23,20 +24,19 @@ import glob
 
 ###SET UP YOUR SESSION:
 new = True #if new analysis, set to True read adata from 10X data source. If resuming work, set to false and read from results_file path.
-singleSample = True #set to True if only processing a single sample. Note this is newly implemented, differential expression functions below will not work with only 1 sample.
+singleSample = False #set to True if only processing a single sample. Note this is newly implemented, differential expression functions below will not work with only 1 sample.
 batches = False #Set to True if processing multiple samples and you need to do batch correction (i.e. if samples were taken to core and sequenced at different times)
 dataType = '.h5' #can be either '.h5' or '.mtx' depending on what filtered cells matrix file you are using. h5 is faster.
 
 ###SET DIRECTORY TO READ/WRITE DATA.
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
 BaseDirectory = '/d2/studies/scanPy/VM_LHb_Stress/Ctrl_Stress_MergedScanPy/'
-sampleName = 'ACWS_VM_NDB_Stress' #This is used for name result output files
+sampleName = 'ACWS_VM_LHb_Stress' #This is used for name result output files
 os.chdir(BaseDirectory)
 %logstart -o scanpy_log.txt
 
 ###SET SCANPY SETTINGS:
-results_file='Results_File'
-#results_file = os.path.join(BaseDirectory, sampleName + '_scanpy_results.h5ad')  # the file that will store the analysis results
+results_file=os.path.join(BaseDirectory, sampleName+'_scanPy_results.h5ad')
 results_file_partial = os.path.join(BaseDirectory, sampleName + '_scanpy_adata_preHVGselection.h5ad')
 
 sc.settings.verbosity=3  # verbosity: errors (0), warnings (1), info (2), hints (3)
@@ -55,7 +55,7 @@ if not new:
         sc.read(results_file_partial)
 elif new:
     if dataType=='.h5':
-        fileNames = glob.glob(os.path.join(BaseDirectory, '*filtered.h5'))
+        fileNames = glob.glob(os.path.join(BaseDirectory, '*filtered_feature_bc_matrix.h5'))
         if len(fileNames)>1:
             raise NameError("Multiple files matched glob pattern, check files or use more specific pattern")
         else:
@@ -68,41 +68,12 @@ elif new:
 
 ###IF ANALYSING MULTIPLE SAMPLES, ADD CONDITION IDs TO ADATA ANNOTATIONS:
 if not singleSample:
-    #Import merged barcodes from extracted tsv file into pandas dataframe:
-    cells = pd.read_csv(os.path.join(BaseDirectory, 'barcodes.tsv'), sep='\t', names=['barcode'])
-    #Preview the data that imported:
-    cells.head()
-    #Make a list of barcodes:
-    barcodes = cells.barcode.tolist()
-    #Initiate lists
-    cellsList = []
-    groupList=[]
-    #Split the barcodes from groups and append to their own lists:
-    for cell in barcodes:
-        code, group = cell.split(sep='-')
-        cellsList.append(code)
-        groupList.append(group)
-    #Create a new pandas dataframe with the split data:
-    anno = pd.DataFrame(data=(cellsList, groupList)).T
-    anno.columns=['barcode', 'sample']
-    #Split the data into groups & annotate - 
-    #EDIT GROUP LISTS FOR YOUR SAMPLES. THIS SHOULD BE BASED ON THE ORDER OF THE SAMPLES IN THE CELLRANGER AGGR INDEX CSV, BUT YOU NEED TO DOUBLE CHECK INDIVIDUAL BARCODE TSVs:
-    g1 = ['1','3','4']
-    g2 = ['2','5','6']
-    group1 = anno.loc[anno['sample'].isin(g1)].copy()
-    group1['condition']=1
-    group1['condition'] = group1['condition'].astype('category')
-    group2 = anno.loc[anno['sample'].isin(g2)].copy()
-    group2['condition']=2
-    group2['condition'] = group2['condition'].astype('category')
-    #Put it all back together:
-    anno = pd.concat([group1, group2], axis=0)
-    #Add the group labels to the adata annotations:
-    adata.obs['condition'] = anno['condition'].values
-    #Name the groups, for naming of result output files only:
-    g1n = 'Control'
-    g2n = 'Stress'
-    
+    adata.obs['sample']=adata.obs.index.str[-1]
+    g1 = ['1','2','3','4']
+    g2 = ['5','6','7','8']
+    adata.obs['condition']=adata.obs['sample'].isin(g2).astype(int)+1
+    g1n = 'Saline'
+    g2n = 'Nicotine'
     groupNames = {"1" : g1n, "2" : g2n}
  
 elif singleSample:
@@ -110,15 +81,9 @@ elif singleSample:
     
 ###IF SAMPLES WERE RUN IN MULTIPLE BATCHES (i.e. TAKEN TO THE CORE AT SEPARATE TIMES) ADD BATCH INFO TO ADATA:
 if batches:
-    b1 = ['1','3']
-    b2 = ['2','4','5','6']
-    batch1 = anno.loc[anno['sample'].isin(b1)]
-    batch1['batch']=1
-    batch2 = anno.loc[anno['sample'].isin(b2)]
-    batch2['batch']=2
-    batches_combined = pd.concat([batch1, batch2])
-    
-    adata.obs['batch']=batches_combined['batch'].values
+    b1 = ['1','3','5','8']
+    b2 = ['2','4','6','7']    
+    adata.obs['batch']=adata.obs['sample'].isin(b2).astype(int)+1
     adata.obs['batch']=adata.obs['batch'].astype('category')
 
 ###EXPLORE DATA, PLOT HIGHEST EXPRESSING GENES, FILTER LOW EXPRESSION GENES & CELLS:
@@ -131,7 +96,7 @@ sns.histplot(adata.obs["total_counts"], kde=False, ax=axs[0])
 sns.histplot(adata.obs["total_counts"][adata.obs["total_counts"] < 12500], kde=False, bins=40, ax=axs[1])
 sns.histplot(adata.obs["n_genes_by_counts"], kde=False, bins=60, ax=axs[2])
 sns.histplot(adata.obs["n_genes_by_counts"][adata.obs["n_genes_by_counts"] < 5500], kde=False, bins=60, ax=axs[3])
-plt.savefig('figures/' + sampleName + '_Counts_Genes_CellBenderRaw.' + sc.settings.file_format_figs)
+plt.savefig('figures/' + sampleName + '_Counts_Genes_Raw.' + sc.settings.file_format_figs)
 
 ###FILTER CELLS & GENES (LOOK AT QC HISTOGRAM JUST PLOTTED TO GET A SENSE OF WHAT THESE VALUES SHOULD BE)
 min_genes=200
@@ -188,7 +153,6 @@ adata.write(results_file_partial)
 ###IF YOU LATER WANT TO REVERT TO THE PRE-FILTERED RESULTS FILE USE:
 adata = sc.read(results_file_partial)
 
-
 ###PLOT QC HISTOGRAMS AGAIN TO SEE EFFECT OF FILTERING:
 fig, axs = plt.subplots(1, 4, figsize=(15, 4))
 sns.histplot(adata.obs["total_counts"], kde=False, ax=axs[0])
@@ -240,8 +204,8 @@ genes_max_filt = round(adata.var.shape[0]*(genes_max_percentile/100))
 print(str(genes_max_percentile) + "% (" + str(round(genes_max_filt,2)) + ") of genes have mean lower than " + str(genes_max_perc))
 
 min_mean = .0125
-max_mean = 2.1
-min_disp = 0.2
+max_mean = 3.5
+min_disp = 0.5
 if batches:
     sc.pp.highly_variable_genes(adata, min_mean=min_mean, max_mean=max_mean, min_disp=min_disp, batch_key='batch')
 elif not batches:
@@ -258,7 +222,7 @@ sc.pl.scatter(adata, x='n_cells', y='dispersions_norm', save='_' + str(sampleNam
 sc.pl.scatter(adata, x='n_cells', y='means', save='_' + str(sampleName) + '_means', title='Means')
 
 ###WRITE TABLE OF RESULTS BEFORE FILTERING:
-adata.var.to_excel(os.path.join(BaseDirectory, 'Adata_var_raw_preFiltering.xlsx'))
+adata.var.to_csv(os.path.join(BaseDirectory, 'Adata_var_raw_preFiltering.csv'))
 
 num_hvgs = adata.var.loc[adata.var.highly_variable==1].shape[0]
 total_genes = adata.var.shape[0]
@@ -283,7 +247,7 @@ if batches:
     sc.pp.combat(adata, key='batch')
 
 ###WRITE EXCEL FILE OF HIGHLY VARIABLE GENES:
-adata.var.to_excel(os.path.join(BaseDirectory, str(sampleName) + 'HighlyVariableGenes_minMean' + str(min_mean) + '_maxMean' + str(max_mean) + '_min_disp' + str(min_disp) + '.xlsx'))
+adata.var.to_csv(os.path.join(BaseDirectory, str(sampleName) + 'HighlyVariableGenes_minMean' + str(min_mean) + '_maxMean' + str(max_mean) + '_min_disp' + str(min_disp) + '.csv'))
 
 ###SCALE EACH GENE TO UNIT OF VARIANCE, CLIP VALUES EXCEEDING MAX VARIANCE:
 sc.pp.scale(adata, max_value=10)
@@ -296,8 +260,8 @@ sc.pl.stacked_violin(adata, ieg, groupby='condition', multi_panel=True, figsize=
 sc.pl.dotplot(adata, ieg, groupby='condition', num_categories=2, standard_scale='var', cmap=color_map, save='IEGS')
 
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
-labeled_genes_var = ['Fos', 'Rorb', 'Grik3', 'Camk2g', 'Gad1', 'Gad2', 'Nos1', 'Ntsr2', 'Pdgfra', 'Tmem119', 'C1qc', 'Flt1', 'Dbi']
-labeled_genes = ['Fos', 'Oprm1', 'Slc17a6', 'Slc17a7', 'Grik3', 'Camk2a', 'Camk2b', 'Ppp2ca', 'Gad1', 'Gad2', 'Sst', 'Pvalb', 'Nos1', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
+labeled_genes_var = ['Fos', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Nos1', 'Ntsr2', 'Pdgfra', 'Tmem119', 'C1qc', 'Flt1']
+labeled_genes = ['Fos', 'Slc17a6', 'Slc17a7', 'Camk2a', 'Gad1', 'Gad2', 'Sst', 'Pvalb', 'Nos1', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
 
 nullGenes=[]
 for gene in labeled_genes_var:
@@ -361,7 +325,7 @@ sc.pl.umap(adata, color=['louvain'], use_raw=False, wspace=0.5, save='_' + str(s
 cluster_method='leiden'
 
 ###PLOT UMAP WITH QC METRICS. THIS CAN BE HELPFUL TO SEE THAT YOU MAY NEED TO GO BACK AND ADJUST QC PARAMS:
-sc.pl.umap(adata, color=[cluster_method, 'total_counts', 'n_genes'], use_raw=False, color_map=color_map, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + '_' + str(cluster_method) + '_QCmetrics')
+sc.pl.umap(adata, color=[cluster_method, 'total_counts', 'n_genes', 'condition'], use_raw=False, color_map=color_map, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + '_' + str(cluster_method) + '_QCmetrics')
 
 ###SEPARATE LEIDEN CLUSTERS BY CONDITION & APPEND TO ADATA.OBS
 pairs = list(zip(adata.obs['condition'], adata.obs[cluster_method].astype('int')))
@@ -594,7 +558,11 @@ for cluster in clus:
         pass
 
 ###DIFFERENTIAL EXPRRESSION OF GENES WITHIN CLUSTERS:
-pairs = list(zip(adata.obs['condition'], adata.obs[cluster_method].astype('int')))
+pairs = list(zip(adata.obs['condition'], adata.obs[cluster_method].astype('str')))
+adata.obs['pairs_'+cluster_method]=pairs
+adata.obs['pairs_leiden']=adata.obs['pairs_leiden'].astype('str')
+adata.write(sampleName+'_preDiffExp.h5ad')
+pairs = adata.obs['pairs_'+cluster_method].tolist()
 pairs_set = list(set(pairs))
 s = sorted(pairs_set)
 half = int((len(s)/2))
@@ -611,63 +579,64 @@ print(lz_cluster_method)
 method = 't-test' #t-test, wilcoxon, or logreg
 n_genes = 1000
 
-sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=['(2, 0)'], reference='(1, 0)', use_raw=True, n_genes=n_genes, method=method)
-
 ###CALCULATE GENES UPREGULATED IN GROUP 2 USING RAW DATA:
 cat = pd.DataFrame()
 for i in lz_cluster_method:
-    sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), use_raw=True, n_genes=n_genes, method=method)
-    result = adata.uns['rank_genes_groups']
-    groups = result['names'].dtype.names
-    pval_table = pd.DataFrame(
-            {group + '_' + key[:1]: result[key][group]
-            for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
-    cat = pd.concat([cat, pval_table], axis=1)
+    try:
+        sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), use_raw=True, n_genes=n_genes, method=method)
+        result = adata.uns['rank_genes_groups']
+        groups = result['names'].dtype.names
+        pval_table = pd.DataFrame(
+                {group + '_' + key[:1]: result[key][group]
+                for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
+        cat = pd.concat([cat, pval_table], axis=1)
+    except:
+        pass
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1 USING RAW DATA: 
 cat = pd.DataFrame()
 for i in list2compare:
-    if cluster_method=='leiden':
+    try:
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, method=method)
-    elif cluster_method=='louvain':
-        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, method=method)
-    #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
-    result = adata.uns['rank_genes_groups']
-    groups = result['names'].dtype.names
-    pval_table = pd.DataFrame(
-            {group + '_' + key[:1]: result[key][group]
-            for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
-    cat = pd.concat([cat, pval_table], axis=1)
+        #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
+        result = adata.uns['rank_genes_groups']
+        groups = result['names'].dtype.names
+        pval_table = pd.DataFrame(
+                {group + '_' + key[:1]: result[key][group]
+                for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
+        cat = pd.concat([cat, pval_table], axis=1)
+    except:
+        pass
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
 
 ###CALCULATE GENES UPREGULATED IN GROUP 2 USING ONLY HIGHLY VARIABLE GENES:
 cat = pd.DataFrame()
 for i in list2compare:
-    if cluster_method=='leiden':
+    try:
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), use_raw=False, n_genes=n_genes, method=method)
-    elif cluster_method=='louvain':
-        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[1])], reference=str(i[0]), n_genes=n_genes, use_raw=False, method=method)        
-    result = adata.uns['rank_genes_groups']
-    groups = result['names'].dtype.names
-    pval_table = pd.DataFrame(
-            {group + '_' + key[:1]: result[key][group]
-            for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
-    cat = pd.concat([cat, pval_table], axis=1)
+        result = adata.uns['rank_genes_groups']
+        groups = result['names'].dtype.names
+        pval_table = pd.DataFrame(
+                {group + '_' + key[:1]: result[key][group]
+                for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
+        cat = pd.concat([cat, pval_table], axis=1)
+    except:
+        pass
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1 USING ONLY HIGHLY VARIABLE GENES: 
 cat = pd.DataFrame()
 for i in list2compare:
-    if cluster_method=='leiden':
+    try:
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), use_raw=False, n_genes=n_genes, method=method)
-    elif cluster_method=='louvain':
-        sc.tl.rank_genes_groups(adata, 'pairs', groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, use_raw=False, method=method)
-    #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
-    result = adata.uns['rank_genes_groups']
-    groups = result['names'].dtype.names
-    pval_table = pd.DataFrame(
-            {group + '_' + key[:1]: result[key][group]
-            for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
-    cat = pd.concat([cat, pval_table], axis=1)
+        #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
+        result = adata.uns['rank_genes_groups']
+        groups = result['names'].dtype.names
+        pval_table = pd.DataFrame(
+                {group + '_' + key[:1]: result[key][group]
+                for group in groups for key in ['names', 'pvals_adj']}).head(n_genes)
+        cat = pd.concat([cat, pval_table], axis=1)
+    except:
+        pass
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
 
 ###COUNT DEGS
@@ -693,7 +662,7 @@ sc.pl.umap(adatasub, color=labeled_genes, color_map=color_map, wspace=0.5, save=
 sc.pl.umap(adatasub, color=labeled_genes_var, color_map=color_map, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution_clusters_labeled_leiden_filtered_recluster' + str(cluster))
 
 
-###PLOT DOT PLOTS:
+###PLOT DOT PLOTS FOR A SPECIFIC CLUSTER:
 adatac5 = adata[adata.obs['leiden']=='5']
 mito=['mt-Nd1', 'mt-Nd2', 'mt-Nd3', 'mt-Nd4', 'mt-Nd4l', 'mt-Nd5', 'mt-Nd6', 'mt-Cytb', 'mt-Co1', 'mt-Co2', 'mt-Co3', 'mt-Atp6', 'mt-Atp8', 'Taco1', 'Atg4a']
 ieg=['Fos', 'Arc', 'Npas4', 'Cux2', 'Egr1']
