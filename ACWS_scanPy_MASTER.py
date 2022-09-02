@@ -7,6 +7,7 @@ This is the main script for processing scRNA-Seq Data through ScanPy.
 
 @author: smith
 """
+#%%
 import os
 os.chdir('/d1/software/scanpy/')
 import scanpy as sc
@@ -22,19 +23,21 @@ from datetime import datetime
 import ACWS_filterCells as fcx
 import glob
 
+#%%
 ###SET UP YOUR SESSION:
 new = True #if new analysis, set to True read adata from 10X data source. If resuming work, set to false and read from results_file path.
 singleSample = False #set to True if only processing a single sample. Note this is newly implemented, differential expression functions below will not work with only 1 sample.
 batches = False #Set to True if processing multiple samples and you need to do batch correction (i.e. if samples were taken to core and sequenced at different times)
 dataType = '.h5' #can be either '.h5' or '.mtx' depending on what filtered cells matrix file you are using. h5 is faster.
 
+#%%
 ###SET DIRECTORY TO READ/WRITE DATA.
 #THIS SHOULD BE THE DIRECTORY CONTAINING THE .MTX DATA FILE AND .TSV BARCODES & FEATURE FILES:
 BaseDirectory = '/d2/studies/scanPy/VM_LHb_Stress/Ctrl_Stress_MergedScanPy/'
 sampleName = 'ACWS_VM_LHb_Stress' #This is used for name result output files
 os.chdir(BaseDirectory)
 %logstart -o scanpy_log.txt
-
+#%%
 ###SET SCANPY SETTINGS:
 results_file=os.path.join(BaseDirectory, sampleName+'_scanPy_results.h5ad')
 results_file_partial = os.path.join(BaseDirectory, sampleName + '_scanpy_adata_preHVGselection.h5ad')
@@ -46,6 +49,7 @@ sc.set_figure_params(fontsize=14, dpi=80, dpi_save=300, format='svg')
 matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix',})
 color_map='inferno' #see options for colormaps at https://matplotlib.org/3.1.1/gallery/color/colormap_reference.html
 
+#%%
 ###LOAD DATA
 if not new:
     try:
@@ -65,7 +69,7 @@ elif new:
         adata = sc.read_10x_mtx(BaseDirectory)
     adata.var_names_make_unique()  # this is unnecessary if using 'gene_ids'
 
-
+#%%
 ###IF ANALYSING MULTIPLE SAMPLES, ADD CONDITION IDs TO ADATA ANNOTATIONS:
 if not singleSample:
     adata.obs['sample']=adata.obs.index.str[-1]
@@ -74,11 +78,11 @@ if not singleSample:
     adata.obs['condition']=adata.obs['sample'].isin(g2).astype(int)+1
     g1n = 'Saline'
     g2n = 'Nicotine'
-    groupNames = {"1" : g1n, "2" : g2n}
- 
+    groupNames = {"1" : g1n, "2" : g2n} 
 elif singleSample:
     adata.obs['condition']=int(input("Specify condition # to append to adata.obs: "))
-    
+
+#%%
 ###IF SAMPLES WERE RUN IN MULTIPLE BATCHES (i.e. TAKEN TO THE CORE AT SEPARATE TIMES) ADD BATCH INFO TO ADATA:
 if batches:
     b1 = ['1','3','5','8']
@@ -86,6 +90,7 @@ if batches:
     adata.obs['batch']=adata.obs['sample'].isin(b2).astype(int)+1
     adata.obs['batch']=adata.obs['batch'].astype('category')
 
+#%%
 ###EXPLORE DATA, PLOT HIGHEST EXPRESSING GENES, FILTER LOW EXPRESSION GENES & CELLS:
 sc.pl.highest_expr_genes(adata, n_top=50, save='_' + str(sampleName) + '_highestExpressingGenes')
 sc.pp.calculate_qc_metrics(adata, inplace=True)
@@ -98,6 +103,7 @@ sns.histplot(adata.obs["n_genes_by_counts"], kde=False, bins=60, ax=axs[2])
 sns.histplot(adata.obs["n_genes_by_counts"][adata.obs["n_genes_by_counts"] < 5500], kde=False, bins=60, ax=axs[3])
 plt.savefig('figures/' + sampleName + '_Counts_Genes_Raw.' + sc.settings.file_format_figs)
 
+#%%
 ###FILTER CELLS & GENES (LOOK AT QC HISTOGRAM JUST PLOTTED TO GET A SENSE OF WHAT THESE VALUES SHOULD BE)
 min_genes=200
 max_genes=4500
@@ -111,13 +117,14 @@ sc.pp.filter_cells(adata, max_counts=max_counts)
 sc.pp.filter_cells(adata, min_counts=min_counts)
 sc.pp.filter_genes(adata, min_cells=min_cells)
 
+#%%
 ###PLOT QC HISTOGRAMS:
 fig, axs = plt.subplots(1, 2, figsize=(15, 4))
 sns.histplot(adata.obs["total_counts"], kde=False, ax=axs[0])
 sns.histplot(adata.obs["n_genes_by_counts"], kde=False, bins=60, ax=axs[1])
 plt.savefig('figures/' + sampleName + '_Genes'+str(min_genes)+'to'+str(max_genes)+'_Counts'+str(min_counts)+'to'+str(max_counts)+'.' + sc.settings.file_format_figs)
 
-
+#%%
 ###CALCULATE % MITOCHONDRIAL GENES FOR EACH CELL, AND ADD TO ADATA.OBS:
 mito_genes = adata.var_names.str.startswith('mt-') 
 adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1).A1 / np.sum(adata.X, axis=1).A1 
@@ -129,6 +136,7 @@ sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
 sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) + '_mito_counts')
 sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_genes_counts')
 
+#%%
 ###FILTER BASED ON MITO %
 max_mito = 5e-2
 adata = adata[adata.obs['percent_mito'] < max_mito, :].copy()
@@ -136,23 +144,26 @@ sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) 
 sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
              jitter=0.4, multi_panel=True, save='_' + str(sampleName) + '_plot_mitoCountsGenes_filtered'+str(max_mito))
 
-
 sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
              jitter=0.4, multi_panel=True, save='_' + str(sampleName) + '_plot_GenesCountsMito_MaxMito'+str(max_mito)+'_MinCounts'+str(min_counts))
 sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) + '_mito_Max'+str(max_mito)+'_MinCounts'+str(min_counts))
 sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_genes_filtered_MaxMito'+str(max_mito)+'_MinCounts'+str(min_counts))
-  
+
+#%%
 ###FILTER GENES AGAIN, AS THIS MAY HAVE CHANGED AFTER FILTERING CELLS
 sc.pp.filter_genes(adata, min_cells=3)
 
+#%%
 ###STORE THE RAW ADATA STATE AS A VARIABLE TO BE ABLE TO LABEL GENES THAT WERE FILTERED OUT ETC:
 adata.raw = adata
 
+#%%
 ###SAVE THE CURRENT ADATA STATE, CAN REVERT TO THIS WHILE TUNING PARAMETERS:
 adata.write(results_file_partial)
+#%%
 ###IF YOU LATER WANT TO REVERT TO THE PRE-FILTERED RESULTS FILE USE:
 adata = sc.read(results_file_partial)
-
+#%%
 ###PLOT QC HISTOGRAMS AGAIN TO SEE EFFECT OF FILTERING:
 fig, axs = plt.subplots(1, 4, figsize=(15, 4))
 sns.histplot(adata.obs["total_counts"], kde=False, ax=axs[0])
@@ -160,12 +171,14 @@ sns.histplot(adata.obs["total_counts"][adata.obs["total_counts"] < max_counts], 
 sns.histplot(adata.obs["n_genes_by_counts"], kde=False, bins=60, ax=axs[2])
 sns.histplot(adata.obs["n_genes_by_counts"][adata.obs["n_genes_by_counts"] < max_genes], kde=False, bins=60, ax=axs[3])
 plt.savefig('figures/' + sampleName + '_Counts_Genes_filteredMaxMito'+str(int(max_mito*100))+'_maxGenes'+str(max_genes)+'.' + sc.settings.file_format_figs)
-
+#%%
 ###NORMALIZE & LOG TRANSFORM
 sc.pp.normalize_total(adata, target_sum=1e4, max_fraction=.05, exclude_highly_expressed=True)
 sc.pp.log1p(adata)
 
-###FILTER OUT CELLS THAT EXPRESS ABOVE THRESHOLD OF MULTIPLE MUTUALLY EXCLUSIVE GENES - IN "BETA TESTING":
+#%%
+###FILTER OUT CELLS THAT EXPRESS ABOVE THRESHOLD OF MULTIPLE MUTUALLY EXCLUSIVE GENES
+#IN "BETA TESTING":
 thresh = 0.6
 genePairs = [('Tmem119', 'Pdgfra'), ('Tmem119', 'Olig2'), ('C1qa', 'Flt1'), 
              ('Pdgfra', 'C1qa'), ('C1qa', 'Olig2'), ('Slc17a7', 'Tmem119'),
@@ -180,9 +193,11 @@ print(str(cat.shape[0]) + " cells to drop")
 
 adata = fcx.filterCellsByCoex(adata, cat)
 
+#%%
 #Update adata.raw with filtered dataset before HVG selection
 adata.raw=adata
 
+#%%
 ###PRE-PROCESS DATA, SELECT HIGHLY VARIABLE GENES. 
 ###YOU WILL LIKELY WANT TO PLAY WITH THESE VARIABLES AND SEE HOW IT AFFECTS RESULTS.
 sc.pp.highly_variable_genes(adata)
@@ -203,6 +218,7 @@ genes_max_perc = np.percentile(adata.var.means, genes_max_percentile)
 genes_max_filt = round(adata.var.shape[0]*(genes_max_percentile/100))
 print(str(genes_max_percentile) + "% (" + str(round(genes_max_filt,2)) + ") of genes have mean lower than " + str(genes_max_perc))
 
+#%%
 min_mean = .0125
 max_mean = 3.5
 min_disp = 0.5
@@ -228,9 +244,13 @@ num_hvgs = adata.var.loc[adata.var.highly_variable==1].shape[0]
 total_genes = adata.var.shape[0]
 hvg_fraction=round((num_hvgs/total_genes),4)
 print(str(hvg_fraction*100)+"% of genes marked highly variable with current parameters")
+
+#%%
 ###ACTUALLY DO THE FILTERING
 sc.pl.highly_variable_genes(adata, save='_' + str(sampleName) + '_highlyVariableGenes')
 adata = adata[:, adata.var['highly_variable']].copy()
+
+#%%
 """
 Note the line below this (sc.pp.regress_out) was included in the original implementations 
 of many single-cell analysis pipelines (e.g. Seurat), however this is not necessarily a best practice.
@@ -242,15 +262,17 @@ whether to run the next line (commented out by default).
 """
 #sc.pp.regress_out(adata, ['total_counts'], n_jobs=18) #Removed 'percent_mito' as a covariate
 
+#%%
 #Batch effect correction:
 if batches:
     sc.pp.combat(adata, key='batch')
-
+#%%
 ###WRITE EXCEL FILE OF HIGHLY VARIABLE GENES:
 adata.var.to_csv(os.path.join(BaseDirectory, str(sampleName) + 'HighlyVariableGenes_minMean' + str(min_mean) + '_maxMean' + str(max_mean) + '_min_disp' + str(min_disp) + '.csv'))
-
+#%%
 ###SCALE EACH GENE TO UNIT OF VARIANCE, CLIP VALUES EXCEEDING MAX VARIANCE:
 sc.pp.scale(adata, max_value=10)
+#%%
 ###EXAMPLE HOW TO PLOT EXPRESSION DISTRIBUTION INDIVIDUAL GENES:
 #sc.pl.violin(adata, 'Oprm1', save='_' + str(sampleName) + '_Oprm1')
 #You can also pass a list of genes here:
@@ -258,7 +280,7 @@ ieg=['Fos', 'Arc', 'Npas4', 'Cux2', 'Egr1', 'Slc17a6']
 sc.pl.stacked_violin(adata, ieg, groupby='condition', multi_panel=True, figsize=(6,3), num_categories=2, 
                      stripplot=True, jitter=0.4, scale='count', yticklabels=True, save='_' + str(sampleName) + '_IEGs_stripplot')
 sc.pl.dotplot(adata, ieg, groupby='condition', num_categories=2, standard_scale='var', cmap=color_map, save='IEGS')
-
+#%%
 ###CREATE LIST OF GENES TO LABEL ON PCA/UMAP PLOTS:
 labeled_genes_var = ['Fos', 'Slc17a6', 'Slc17a7', 'Gad1', 'Gad2', 'Nos1', 'Ntsr2', 'Pdgfra', 'Tmem119', 'C1qc', 'Flt1']
 labeled_genes = ['Fos', 'Slc17a6', 'Slc17a7', 'Camk2a', 'Gad1', 'Gad2', 'Sst', 'Pvalb', 'Nos1', 'Slc4a4', 'Ntsr2', 'Pdgfra', 'Gpr17', 'Tmem119', 'C1qc', 'Cldn5', 'Flt1', 'Dbi']
@@ -270,24 +292,25 @@ for gene in labeled_genes_var:
 for gene in nullGenes:
     print(gene + " not found in HVGs. Removing from labeled_genes_var\n")
     labeled_genes_var.remove(gene)
-
+#%%
 #RUN PCA
 n_comps = 30
 sc.tl.pca(adata, n_comps=n_comps, svd_solver='arpack')
 sc.pl.pca(adata, color=labeled_genes, color_map=color_map, save='_' + str(sampleName) + '_' + str(n_comps) + 'comps_PCA_labeled')
 sc.pl.pca_variance_ratio(adata, log=True, save='_' + str(n_comps) + '_ncomps_PCA_VarianceRatio_log')
 sc.pl.pca_variance_ratio(adata, log=False, save='_' + str(n_comps) + '_ncomps_PCA_VarianceRatio_linear')
+#%%
 ###LOOK AT VARIANCE_RATIO OUTPUT FILE AND CHOOSE NUMBER OF PCs TO LEFT OF APEX BEFORE PROCEEDING TO NEXT STEP
 n_pcs = 15
 sc.pl.pca_overview(adata, save='_' + str(sampleName) + '_' + str(n_pcs) + 'PCs_PCA_Overview')
 sc.pl.pca_loadings(adata, components=list(np.arange(1, n_pcs+1)), save='_' + str(sampleName) + '_' + str(n_pcs) + '_PCs')
-
+#%%
 #COMPUTING NEIGHBORHOOD GRAPH:
 #Uses PCA representation of data matrix
 n_neighbors = 25
 min_dist = .1
 sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs)
-
+#%%
 ###UMAP EMBEDDING:
 sc.tl.umap(adata, min_dist=min_dist)
 vmin=0 #minimum to scale umap plots to
@@ -296,10 +319,10 @@ sc.pl.umap(adata, color=labeled_genes, color_map=color_map, vmin=vmin, vmax=vmax
 ###THIS REQUIRES GENES IN LABELED_GENES TO BE IN HIGHLY VARIABLE LIST:
 vmax_filt=None #maximum to scale filtered umap plots to
 sc.pl.umap(adata, color=labeled_genes_var, color_map=color_map, vmax=vmax_filt, use_raw=False, save='_' + str(sampleName) + '_nNeighbors' + str(n_neighbors) + '_nPCs' + str(n_pcs) + '_umap_filtered')
-
+#%%
 ###SET RESOLUTION FOR ASSIGNING CLUSTER LABELS:
 """
-This will change the number of clusters identified, and can drastically alter results,
+Changing resolution will change the number of clusters identified, and can drastically alter results,
 so I suggest trying a few settings. Lower resolution = fewer clusters, grouping more cells into each cluster
 """
 resolution = 0.5
@@ -320,10 +343,10 @@ sc.pl.umap(adata, color=labeled_genes, color_map=color_map, vmax=vmax_raw, wspac
 labeled_genes_var.insert(0,'louvain')
 sc.pl.umap(adata, color=labeled_genes_var, color_map=color_map, vmax=vmax_filt, use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_louvain_filtered')
 sc.pl.umap(adata, color=['louvain'], use_raw=False, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_louvain_only')
-
+#%%
 ###SELECT A CLUSTERING METHOD (LEIDEN PREFERRED, LOUVAIN OPTIONAL)
 cluster_method='leiden'
-
+#%%
 ###PLOT UMAP WITH QC METRICS. THIS CAN BE HELPFUL TO SEE THAT YOU MAY NEED TO GO BACK AND ADJUST QC PARAMS:
 sc.pl.umap(adata, color=[cluster_method, 'total_counts', 'n_genes', 'condition'], use_raw=False, color_map=color_map, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + '_' + str(cluster_method) + '_QCmetrics')
 
@@ -332,7 +355,7 @@ pairs = list(zip(adata.obs['condition'], adata.obs[cluster_method].astype('int')
 adata.obs['pairs_'+cluster_method] = pairs
 adata.obs['pairs_'+cluster_method] = adata.obs['pairs_'+cluster_method].astype('category')
 adata.obs[cluster_method] = adata.obs[cluster_method].values.remove_unused_categories()
-
+#%%
 #COUNT NUMBER OF CELLS IN EACH CLUSTER:
 counts = adata.obs['pairs_'+cluster_method].value_counts().sort_index()
 print(counts)
@@ -418,6 +441,7 @@ if not singleSample:
     sc.tl.rank_genes_groups(adata, 'pairs_'+cluster_method, method=method)
     sc.pl.rank_genes_groups(adata, groupby=cluster_method, n_genes=25, sharey=False, save='_' + str(sampleName) + '_' + method + '_clusters_leiden')
 
+#%%
 ###CALCULATE CLUSTER STATISTICS USING ALL GENES, MAKE TABLES OF MARKER GENES FOR EACH CLUSTER:
 method = 't-test' #t-test, wilcoxon, or logreg
 n_genes=1000
@@ -444,11 +468,13 @@ elif method=='logreg':
             for group in groups for key in ['names', 'scores']}).head(n_genes)
         pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_coefs_' + cluster_method + '_clusters_' + str(n_genes) + 'genes_raw_corrected.xlsx'), engine='openpyxl')
 
+#%%
 ###PLOT RAW MARKERS AS HEATMAP:
 t_raw = table.T
 markers_raw=t_raw[0].tolist()
 sc.pl.heatmap(adata, var_names=markers_raw, groupby=cluster_method, standard_scale='var', cmap=color_map, use_raw=True, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_'+cluster_method+'_raw')
 
+#%%
 ###CALCULATE CLUSTER STATISTICS USING HIGHLY VARIABLE GENES, MAKE TABLES OF MARKER GENES FOR EACH CLUSTER:
 method = 't-test' #t-test, wilcoxon, or logreg
 n_genes = 2000 #set to adata.var.shape[0] to include all HVGs
@@ -475,19 +501,20 @@ elif method=='logreg':
             for group in groups for key in ['names', 'scores']}).head(n_genes)
         pval_table.to_excel(os.path.join(BaseDirectory, sampleName + '_' + method + '_coefs_' + cluster_method + '_clusters_' + str(n_genes) + 'genes_filtered_corrected.xlsx'), engine='openpyxl')
 
+#%%
 ###EXTRACT MARKER GENES - MOST ENRICHED GENES PER CLUSTER:
 t = table.T
 markers = t[0].tolist()
 
 ###PLOT MARKERS AS HEATMAP:
 sc.pl.heatmap(adata, var_names=markers, groupby=cluster_method, standard_scale='var', cmap=color_map, use_raw=False, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_'+cluster_method+'_HVGs')
-
+#%%
 ###GENERATE UMAP PLOT USING THE DATA-DRIVEN MARKERS AS LABELED GENES:
 markers.insert(0,cluster_method)
 vmin=None
 vmax=5
 sc.pl.umap(adata, color=markers, use_raw=False, color_map=color_map, vmin=vmin, vmax=vmax, wspace=0.5, save='_' + str(sampleName) + '_' + str(resolution) + 'resolution_clusters_labeled_' + cluster_method + '_filtered_MarkerGenes_' + str(method))
-
+#%%
 ###TO MAKE REALLY NICE HEATMAPS, IT IS BEST TO PLOT GENES FROM SEVERAL ROWS OF THE PVAL_TABLE, AND MANUALLY INSPECT / HAND PICK GENES TO PLOT:
 t = table.T
 for row in range(10):
@@ -495,7 +522,7 @@ for row in range(10):
     if not os.path.exists(os.path.join(BaseDirectory, 'figures/heatmaps/')):
         os.mkdir(os.path.join(BaseDirectory, 'figures/heatmaps/'))
     sc.pl.heatmap(adata, var_names=markers, groupby=cluster_method, use_raw=False, standard_scale='var', cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_' + str(cluster_method) +'_row' + str(row))
-
+#%%
 #Make a list of the visually best marker genes to use for your publication heatmap:
 pickedGenes=[
     'Your'
@@ -505,7 +532,7 @@ pickedGenes=[
 
 sc.pl.heatmap(adata, var_names=pickedGenes, groupby='leiden', use_raw=False, standard_scale='var', cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_HandPicked')
 sc.pl.stacked_violin(adata, var_names=pickedGenes, groupby=cluster_method, standard_scale='var', cmap=color_map, use_raw=False, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_'+cluster_method+'_MarkerGenes_HandPicked')
-
+#%%
 #Picked genes for logreg:
 pickedGenes_logreg=[
     'Your',
@@ -513,30 +540,30 @@ pickedGenes_logreg=[
     'MarkerGenes',
     'Here',
     ]
-
+#%%
 sc.pl.heatmap(adata, var_names=pickedGenes_logreg, groupby='leiden', use_raw=False, standard_scale='var', cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_HandPicked')
 sc.pl.stacked_violin(adata, var_names=pickedGenes_logreg, groupby=cluster_method, standard_scale='var', cmap=color_map, use_raw=False, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_clusters_'+cluster_method+'_MarkerGenes_HandPicked')
-
+#%%
 ###HEIRARCHICAL CLUSTERING:
 sc.tl.dendrogram(adata, n_pcs=n_pcs, groupby=cluster_method)
 sc.pl.dendrogram(adata, groupby=cluster_method, save='_'+cluster_method+'_'+method)
-
+#%%
 ###PLOT A HEATMAP WITH THE DENDROGRAM AND YOUR PICKED GENES. YOU MAY WANT TO REORDER YOUR GENE LIST BASED ON THE ORDER OF CLUSTERS IN DENDROGRAM
 #Note this is a key figure I would use in publication
 sc.pl.heatmap(adata, var_names=pickedGenes, groupby=cluster_method, use_raw=False, standard_scale='var', dendrogram=True, cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_HandPicked_withDendrogram')
 sc.pl.heatmap(adata, var_names=pickedGenes_logreg, groupby=cluster_method, use_raw=False, standard_scale='var', dendrogram=True, cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_HandPicked_withDendrogram')
 
 sc.pl.heatmap(adata, var_names=markers, groupby=cluster_method, use_raw=False, standard_scale='var', dendrogram=True, cmap=color_map, show_gene_labels=True, save='_' + str(sampleName) + '_' + method + '_MarkerGenes_withDendrogram')
-
+#%%
 ###PLOT CORRELATION MATRIX:
 sc.pl.correlation_matrix(adata, groupby=cluster_method, save='_'+cluster_method)
 sc.pl.correlation_matrix(adata, groupby='pairs_'+cluster_method, save='_pairs_'+cluster_method)
-
+#%%
 ###PLOT PARTITION-BASED GRAPH ABSTRACTIONS
 sc.tl.paga(adata, groups=cluster_method)
 sc.pl.paga(adata, save='_paga_'+cluster_method)
 sc.pl.paga_compare(adata, basis='umap', save='_paga_compare'+cluster_method)
-
+#%%
 ###QUERY GENE ONTOLOGY DATABASE FOR ENRICHMENT (OPTIONAL, DOES NOT AFFECT DOWNSTREAM ANALYSIS):
 clus = adata.obs[cluster_method].unique().tolist()
 for cluster in clus:
@@ -556,8 +583,11 @@ for cluster in clus:
     else:
         print("No significant genes found in " + str(cluster))
         pass
-
+#%%
 ###DIFFERENTIAL EXPRRESSION OF GENES WITHIN CLUSTERS:
+"""Note the syntax here is a little weird and is a workaround for a TypeError that
+seems to be an incompatibiilty between AnnData and newer versions of Pandas.
+It seems to work though it is ugly."""
 pairs = list(zip(adata.obs['condition'], adata.obs[cluster_method].astype('str')))
 adata.obs['pairs_'+cluster_method]=pairs
 adata.obs['pairs_leiden']=adata.obs['pairs_leiden'].astype('str')
@@ -570,15 +600,15 @@ list1 = s[:half]
 list2 = s[half:]
 lz_cluster_method = list(zip(list1, list2))
 
-
+#%%
 #IMPORTANT: INSPECT LZ_LOUVAIN AND LZ_LEID TO MAKE SURE THEY ARE CORRECTLY ALIGNED. 
 #EMPTY CLUSTERS IN ONE GROUP WILL CAUSE PROBLEMS.
 print(lz_cluster_method)
-
+#%%
 ###CALCULATE GENES UPREGULATED IN GROUP 2:
 method = 't-test' #t-test, wilcoxon, or logreg
 n_genes = 1000
-
+#%%
 ###CALCULATE GENES UPREGULATED IN GROUP 2 USING RAW DATA:
 cat = pd.DataFrame()
 for i in lz_cluster_method:
@@ -608,7 +638,7 @@ for i in list2compare:
     except:
         pass
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
-
+#%%
 ###CALCULATE GENES UPREGULATED IN GROUP 2 USING ONLY HIGHLY VARIABLE GENES:
 cat = pd.DataFrame()
 for i in list2compare:
@@ -638,17 +668,18 @@ for i in list2compare:
     except:
         pass
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g1n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
-
+#%%
 ###COUNT DEGS
 #This currently reads an excel file that has been written with results, so change the file name below to your own.
 #In the future this will automatically be calculated for each comparison as the DE is run.
 file1 = '/d2/studies/scanPy/VM_NDB_Stress/scanPyAnalysis05082021_withRegressionTotalCounts/ACWS_NDB_May08-2021_DiffExp_UpregulatedControl_t-test_leiden_0.5resolution_1000genes_filteredHVGs_adj.xlsx'
 file2 = '/d2/studies/scanPy/VM_NDB_Stress/scanPyAnalysis05082021_withRegressionTotalCounts/ACWS_NDB_May08-2021_DiffExp_UpregulatedStress_t-test_leiden_0.5resolution_1000genes_filteredHVGs_adj.xlsx'
 fcx.mergeGroupsCountDEGs(file1, file2, BaseDirectory, n_genes=n_genes, plot=True, save=True, imageType='.svg')
-
+#%%
 ###CONGRATULATIONS, THE PRIMARY ANALYSIS IS DONE. THIS IS A GOOD PLACE TO SAVE YOUR RESULTS:
 adata.write(results_file)
 
+#%%
 #############################################################################
 ###BELOW HERE ARE OPTIONAL ADDITIONAL ANALYSIS & PLOTTING FUNCTIONS.
 
