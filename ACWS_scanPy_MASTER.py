@@ -45,8 +45,8 @@ results_file_partial = os.path.join(BaseDirectory, sampleName + '_scanpy_adata_p
 sc.settings.verbosity=3  # verbosity: errors (0), warnings (1), info (2), hints (3)
 sc.settings.n_jobs=8 #use parallel processing when possible
 sc.logging.print_header()
-sc.set_figure_params(fontsize=14, dpi=80, dpi_save=300, format='svg')
-matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix',})
+sc.set_figure_params(fontsize=14, dpi=80, dpi_save=300, format='pdf')
+matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', 'pdf.fonttype':42, 'ps.fonttype':42})
 color_map='inferno' #see options for colormaps at https://matplotlib.org/3.1.1/gallery/color/colormap_reference.html
 
 #%%
