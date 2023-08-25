@@ -140,9 +140,6 @@ sc.pl.scatter(adata, x='n_counts', y='n_genes', save='_' + str(sampleName) + '_g
 ###FILTER BASED ON MITO %
 max_mito = 5e-2
 adata = adata[adata.obs['percent_mito'] < max_mito, :].copy()
-sc.pl.scatter(adata, x='n_counts', y='percent_mito', save='_' + str(sampleName) + '_filtered_mito_counts', title='Filtered < ' + str(max_genes) +  ' total counts')
-sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
-             jitter=0.4, multi_panel=True, save='_' + str(sampleName) + '_plot_mitoCountsGenes_filtered'+str(max_mito))
 
 sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'],
              jitter=0.4, multi_panel=True, save='_' + str(sampleName) + '_plot_GenesCountsMito_MaxMito'+str(max_mito)+'_MinCounts'+str(min_counts))
@@ -590,7 +587,7 @@ seems to be an incompatibiilty between AnnData and newer versions of Pandas.
 It seems to work though it is ugly."""
 pairs = list(zip(adata.obs['condition'], adata.obs[cluster_method].astype('str')))
 adata.obs['pairs_'+cluster_method]=pairs
-adata.obs['pairs_leiden']=adata.obs['pairs_leiden'].astype('str')
+adata.obs['pairs_'+cluster_method]=adata.obs['pairs_'+cluster_method].astype('str')
 adata.write(sampleName+'_preDiffExp.h5ad')
 pairs = adata.obs['pairs_'+cluster_method].tolist()
 pairs_set = list(set(pairs))
@@ -625,7 +622,7 @@ for i in lz_cluster_method:
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(n_genes) + 'genes_rawData_adj.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1 USING RAW DATA: 
 cat = pd.DataFrame()
-for i in list2compare:
+for i in lz_cluster_method:
     try:
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), n_genes=n_genes, method=method)
         #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
@@ -641,7 +638,7 @@ cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated
 #%%
 ###CALCULATE GENES UPREGULATED IN GROUP 2 USING ONLY HIGHLY VARIABLE GENES:
 cat = pd.DataFrame()
-for i in list2compare:
+for i in lz_cluster_method:
     try:
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[1])], reference=str(i[0]), use_raw=False, n_genes=n_genes, method=method)
         result = adata.uns['rank_genes_groups']
@@ -655,7 +652,7 @@ for i in list2compare:
 cat.to_excel(os.path.join(BaseDirectory, str(sampleName) + '_DiffExp_Upregulated' + str(g2n) + '_' + method + '_' + cluster_method + '_' + str(resolution) + 'resolution_' + str(n_genes) + 'genes_filteredHVGs_adj.xlsx'))
 ###CALCULATE GENES UPREGULATED IN GROUP 1 USING ONLY HIGHLY VARIABLE GENES: 
 cat = pd.DataFrame()
-for i in list2compare:
+for i in lz_cluster_method:
     try:
         sc.tl.rank_genes_groups(adata, 'pairs_' + cluster_method, groups=[str(i[0])], reference=str(i[1]), use_raw=False, n_genes=n_genes, method=method)
         #df = pd.DataFrame(adata.uns['rank_genes_groups']['names']).head(500)
@@ -693,7 +690,7 @@ sc.pl.umap(adatasub, color=labeled_genes, color_map=color_map, wspace=0.5, save=
 sc.pl.umap(adatasub, color=labeled_genes_var, color_map=color_map, use_raw=False, wspace=0.5, save='_' + str(sampleName) + str(resolution) + 'resolution_clusters_labeled_leiden_filtered_recluster' + str(cluster))
 
 
-###PLOT DOT PLOTS FOR A SPECIFIC CLUSTER:
+#%%PLOT DOT PLOTS FOR A SPECIFIC CLUSTER:
 adatac5 = adata[adata.obs['leiden']=='5']
 mito=['mt-Nd1', 'mt-Nd2', 'mt-Nd3', 'mt-Nd4', 'mt-Nd4l', 'mt-Nd5', 'mt-Nd6', 'mt-Cytb', 'mt-Co1', 'mt-Co2', 'mt-Co3', 'mt-Atp6', 'mt-Atp8', 'Taco1', 'Atg4a']
 ieg=['Fos', 'Arc', 'Npas4', 'Cux2', 'Egr1']
