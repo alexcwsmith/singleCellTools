@@ -213,23 +213,23 @@ def mergeGroupsCountDEGs(file1, file2, directory, n_genes=1000, pcutoff=.05, plo
         clusters=[]
         degs=[]
         for col in df.columns:
-            if col.endswith('_p'):
+            if col.endswith('_pval'):
                 count = (df[col]<pcutoff).value_counts()
                 try:
                     count = count.loc[count.index==True].values[0]
                 except IndexError:
                     count=0
                 try:
-                    clu = int(col.strip('_p').split(' ')[-1].strip(')'))
+                    clu = int(col.strip('_pval').split(' ')[-1].strip(')'))
                 except ValueError:
-                    clu =  int(col.strip('_p').split(' ')[-1].strip(')')[1])
+                    clu =  int(col.strip('_pval').split(' ')[-1].strip(')')[1])
                 clusters.append(clu)
                 degs.append(count)
         cat["Up " + groupid]=degs
     if plot:
         fig = cat.plot(kind='bar', grid=False)
         ax = fig.get_figure()
-        ax.savefig(os.path.join(directory, 'figures/' + 'Combined_' + comparisons[0] + '_' + comparisons[1] + '_Ngenes'+str(n_genes)+'_DEG_Counts'+imageType))
+        ax.savefig(os.path.join(directory, 'figures/' + 'Combined_' + comparisons[0] + '_' + comparisons[1] + '_Ngenes'+str(n_genes)+'_DEG_Counts'+imageType), dpi=300, transparent=imageType=='.pdf')
     if save:
         cat.to_excel(os.path.join(directory, 'Combined_' + comparisons[0] + '_' + comparisons[1] + '_Ngenes'+str(n_genes)+'_DEG_Counts.xlsx'))
     return cat
